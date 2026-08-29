@@ -4175,8 +4175,8 @@ ${PROGRAM_DAY_TYPES[1]?.label || "Day 2"}
 Back Squat x4
 Bulgarian Split Squat 3 sets unilateral"></textarea>
       </div>
-      <button class="btn" id="bulk-program-apply">Replace Exercises</button>
-      <p class="text-faint" style="margin:10px 0 0;">This replaces your entire exercise list with what's typed here.</p>
+      <button class="btn" id="bulk-program-apply">Apply</button>
+      <p class="text-faint" style="margin:10px 0 0;">This sets your exercise list to what's typed here.</p>
     </div>
   `;
 
@@ -4288,16 +4288,19 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
       return;
     }
 
+    const existing = await storage.getCustomExercises();
+    const hasExisting = existing.length > 0;
     const breakdown = PROGRAM_DAY_TYPES.map((dt) => `${parsed[dt.key]?.length || 0} to ${dt.label}`).join(", ");
     const ok = await confirmModal({
-      title: `Replace exercises with these ${total}?`,
-      body: `This deletes your current exercise list and adds ${breakdown}.`,
-      confirmLabel: "Replace",
-      danger: true,
+      title: hasExisting ? `Replace exercises with these ${total}?` : `Add these ${total} exercises?`,
+      body: hasExisting
+        ? `This deletes your current exercise list and adds ${breakdown}.`
+        : `This adds ${breakdown}.`,
+      confirmLabel: hasExisting ? "Replace" : "Add",
+      danger: hasExisting,
     });
     if (!ok) return;
 
-    const existing = await storage.getCustomExercises();
     for (const c of existing) {
       await storage.deleteCustomExercise(c.id);
     }
