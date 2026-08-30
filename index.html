@@ -971,7 +971,9 @@ const SCHEMA_VERSION = 1;
 
 // Fixed list of target muscle groups an exercise can be tagged with, used
 // for per-muscle volume tallies. "other" is the default for exercises that
-// haven't been tagged yet.
+// haven't been tagged yet. This is the "Standard" detail level — always
+// shown, regardless of which detail level the user has selected — and the
+// level every sub-muscle below eventually rolls up to.
 const MUSCLE_GROUPS = [
   { key: "chest", label: "Chest" },
   { key: "back", label: "Back" },
@@ -988,8 +990,130 @@ const MUSCLE_GROUPS = [
   { key: "other", label: "Other" },
 ];
 
+// Additional, more specific muscles offered once the user picks "Advanced"
+// (level 1) or "Anatomical" (level 2). Each one names its direct parent —
+// a main group for level 1, or a main group / level-1 muscle for level 2 —
+// so volume can always be "rolled up" to whatever level is being displayed.
+// This list is what makes the volume system capable of more detail without
+// touching the default (Standard) UI at all.
+const MUSCLE_SUBGROUPS = [
+  // level 1 — Advanced: useful synergist muscles worth tracking on their own
+  { key: "lats", label: "Lats", parent: "back", level: 1 },
+  { key: "rhomboids", label: "Rhomboids", parent: "back", level: 1 },
+  { key: "erectors", label: "Erectors (Lower Back)", parent: "back", level: 1 },
+  { key: "teres_major", label: "Teres Major", parent: "back", level: 1 },
+  { key: "brachialis", label: "Brachialis", parent: "biceps", level: 1 },
+  { key: "brachioradialis", label: "Brachioradialis", parent: "forearms", level: 1 },
+  { key: "adductors", label: "Adductors (Inner Thigh)", parent: "glutes", level: 1 },
+  { key: "abductors", label: "Abductors (Outer Hip)", parent: "glutes", level: 1 },
+  { key: "obliques", label: "Obliques", parent: "abs", level: 1 },
+  { key: "hip_flexors", label: "Hip Flexors", parent: "quads", level: 1 },
+
+  // level 2 — Anatomical: individual heads/regions, for the most detailed view
+  { key: "chest_upper", label: "Chest — Upper (Clavicular)", parent: "chest", level: 2 },
+  { key: "chest_lower", label: "Chest — Lower (Sternal)", parent: "chest", level: 2 },
+  { key: "triceps_long", label: "Triceps — Long Head", parent: "triceps", level: 2 },
+  { key: "triceps_lateral", label: "Triceps — Lateral Head", parent: "triceps", level: 2 },
+  { key: "triceps_medial", label: "Triceps — Medial Head", parent: "triceps", level: 2 },
+  { key: "biceps_long", label: "Biceps — Long Head", parent: "biceps", level: 2 },
+  { key: "biceps_short", label: "Biceps — Short Head", parent: "biceps", level: 2 },
+  { key: "delts_front", label: "Front Delt", parent: "shoulders", level: 2 },
+  { key: "delts_side", label: "Side Delt", parent: "shoulders", level: 2 },
+  { key: "delts_rear", label: "Rear Delt", parent: "shoulders", level: 2 },
+  { key: "quads_rectus_femoris", label: "Rectus Femoris", parent: "quads", level: 2 },
+  { key: "quads_vastus_lateralis", label: "Vastus Lateralis (Outer Quad)", parent: "quads", level: 2 },
+  { key: "quads_vastus_medialis", label: "Vastus Medialis (Inner Quad)", parent: "quads", level: 2 },
+  { key: "hamstrings_biceps_femoris", label: "Biceps Femoris (Outer Hamstring)", parent: "hamstrings", level: 2 },
+  { key: "hamstrings_medial", label: "Semitendinosus / -membranosus (Inner Hamstring)", parent: "hamstrings", level: 2 },
+  { key: "glutes_max", label: "Glute Max", parent: "glutes", level: 2 },
+  { key: "glutes_med", label: "Glute Medius / Minimus", parent: "glutes", level: 2 },
+  { key: "calves_gastroc", label: "Gastrocnemius", parent: "calves", level: 2 },
+  { key: "calves_soleus", label: "Soleus", parent: "calves", level: 2 },
+  { key: "abs_upper", label: "Upper Abs", parent: "abs", level: 2 },
+  { key: "abs_lower", label: "Lower Abs", parent: "abs", level: 2 },
+  { key: "traps_upper", label: "Upper Traps", parent: "traps", level: 2 },
+  { key: "traps_mid_lower", label: "Mid / Lower Traps", parent: "traps", level: 2 },
+  { key: "forearms_flexors", label: "Forearm Flexors", parent: "forearms", level: 2 },
+  { key: "forearms_extensors", label: "Forearm Extensors", parent: "forearms", level: 2 },
+];
+
+// Full taxonomy = the 13 main groups (level 0, parent null) + every
+// sub-muscle above. MUSCLE_BY_KEY is the lookup every helper below uses.
+const MUSCLE_TAXONOMY = [
+  ...MUSCLE_GROUPS.map((m) => ({ ...m, parent: null, level: 0 })),
+  ...MUSCLE_SUBGROUPS,
+];
+const MUSCLE_BY_KEY = new Map(MUSCLE_TAXONOMY.map((m) => [m.key, m]));
+
+// The 3 user-selectable detail levels. "rank" is what the rest of the
+// volume system compares against — a plain 0/1/2 matching each muscle's
+// own "level" field above.
+const MUSCLE_DETAIL_LEVELS = [
+  { key: "standard", label: "Standard", rank: 0 },
+  { key: "advanced", label: "Advanced", rank: 1 },
+  { key: "anatomical", label: "Anatomical", rank: 2 },
+];
+function muscleDetailRank(levelKey) {
+  return MUSCLE_DETAIL_LEVELS.find((l) => l.key === levelKey)?.rank ?? 0;
+}
+
 function muscleGroupLabel(key) {
-  return MUSCLE_GROUPS.find((m) => m.key === key)?.label || "Other";
+  return MUSCLE_BY_KEY.get(key)?.label || "Other";
+}
+
+// A muscle's own key, then each parent up to its main group — e.g.
+// "triceps_long" -> ["triceps_long", "triceps"]. A main group's chain is
+// just itself. Anything unrecognized falls back to "other".
+function muscleAncestorChain(key) {
+  const chain = [];
+  let node = MUSCLE_BY_KEY.get(key) || MUSCLE_BY_KEY.get("other");
+  while (node) {
+    chain.push(node.key);
+    node = node.parent ? MUSCLE_BY_KEY.get(node.parent) : null;
+  }
+  return chain;
+}
+
+// Rolls a (possibly very specific) muscle key up to the given detail
+// level's granularity — e.g. "triceps_long" at rank 0 becomes "triceps".
+// A muscle already coarser than the requested rank is returned unchanged,
+// so switching detail levels never invents detail that was never tagged,
+// and never discards a tag that's already coarser than the new level.
+function muscleAtLevel(key, levelRank) {
+  const chain = muscleAncestorChain(key);
+  for (const k of chain) {
+    const node = MUSCLE_BY_KEY.get(k);
+    if (node && node.level <= levelRank) return k;
+  }
+  return "other";
+}
+
+// Every taxonomy key that rolls up to rootKey — rootKey itself plus every
+// descendant at any level — used to fold a main group's sub-muscle volume
+// back together when rendering a breakdown.
+function muscleDescendantKeys(rootKey) {
+  return MUSCLE_TAXONOMY.filter((m) => muscleAncestorChain(m.key).includes(rootKey)).map((m) => m.key);
+}
+
+// Builds <option>/<optgroup> markup for a muscle picker, limited to what's
+// selectable at the given detail level. At rank 0 (Standard) this is just
+// the flat 13-item list, unchanged from before. At rank 1+ it groups each
+// main group's available sub-muscles underneath it via <optgroup>, so the
+// dropdown stays organized instead of dumping 30+ flat options on the user.
+// includeNone adds a leading "None" option, for the optional secondary-
+// muscle picker.
+function muscleOptionsHtml(selectedKey, levelRank, includeNone) {
+  const none = includeNone ? `<option value="">None</option>` : "";
+  if (levelRank <= 0) {
+    return none + MUSCLE_GROUPS.map((m) => `<option value="${m.key}" ${m.key === selectedKey ? "selected" : ""}>${escapeHtml(m.label)}</option>`).join("");
+  }
+  return none + MUSCLE_GROUPS.map((main) => {
+    const subs = MUSCLE_SUBGROUPS.filter((s) => s.level <= levelRank && muscleAncestorChain(s.key).includes(main.key));
+    const mainOption = `<option value="${main.key}" ${main.key === selectedKey ? "selected" : ""}>${escapeHtml(main.label)}</option>`;
+    if (!subs.length) return mainOption;
+    const subOptions = subs.map((s) => `<option value="${s.key}" ${s.key === selectedKey ? "selected" : ""}>${escapeHtml("  " + s.label)}</option>`).join("");
+    return `<optgroup label="${escapeHtml(main.label)}">${mainOption}${subOptions}</optgroup>`;
+  }).join("");
 }
 
 let PROGRAM = {};
@@ -1011,7 +1135,7 @@ function rebuildProgram(customList, overrides, order) {
   for (const dt of PROGRAM_DAY_TYPES) {
     const custom = list
       .filter((c) => c.type === dt.key)
-      .map((c) => ({ id: c.id, name: c.name, sets: c.sets, unilateral: !!c.unilateral, muscleGroup: c.muscleGroup || "other", custom: true }));
+      .map((c) => ({ id: c.id, name: c.name, sets: c.sets, unilateral: !!c.unilateral, muscleGroup: c.muscleGroup || "other", secondaryMuscle: c.secondaryMuscle || null, custom: true }));
     const withOverrides = custom
       .filter((e) => !ov[e.id]?.removed)
       .map((e) => {
@@ -1022,6 +1146,7 @@ function rebuildProgram(customList, overrides, order) {
           ...(typeof o.sets === "number" ? { sets: o.sets } : {}),
           ...(typeof o.unilateral === "boolean" ? { unilateral: o.unilateral } : {}),
           ...(typeof o.muscleGroup === "string" ? { muscleGroup: o.muscleGroup } : {}),
+          ...(Object.prototype.hasOwnProperty.call(o, "secondaryMuscle") ? { secondaryMuscle: o.secondaryMuscle } : {}),
         };
       });
 
@@ -1071,25 +1196,40 @@ function programVolumeSets(type) {
   return PROGRAM[type] ? PROGRAM[type].exercises.reduce((sum, e) => sum + exerciseVolumeSets(e), 0) : 0;
 }
 
-// Per-muscle-group volume for a workout day type: { muscleKey: volumeSets }.
+// Weight applied to an exercise's secondary muscle, relative to its primary
+// (which always counts as 1.0×). Reflects that a secondary mover is worked,
+// but less directly than the primary target, so it doesn't add a full extra
+// set of volume for that muscle.
+const SECONDARY_MUSCLE_VOLUME_WEIGHT = 0.5;
+
+// Per-muscle volume for a workout day type: { muscleKey: volumeSets }.
 // Uses the same unilateral doubling as programVolumeSets, so a muscle
 // trained by a unilateral exercise gets credit for both sides' sets.
-function programMuscleVolume(type) {
+// levelRank (0/1/2, see MUSCLE_DETAIL_LEVELS) controls how finely results
+// are bucketed — every exercise's tagged muscle(s) are rolled up to that
+// granularity, so this always returns sensible totals regardless of how
+// specifically (or not) individual exercises have been tagged.
+function programMuscleVolume(type, levelRank = 0) {
   const totals = {};
   if (!PROGRAM[type]) return totals;
   for (const e of PROGRAM[type].exercises) {
-    const key = e.muscleGroup || "other";
-    totals[key] = (totals[key] || 0) + exerciseVolumeSets(e);
+    const vol = exerciseVolumeSets(e);
+    const primaryKey = muscleAtLevel(e.muscleGroup || "other", levelRank);
+    totals[primaryKey] = (totals[primaryKey] || 0) + vol;
+    if (e.secondaryMuscle) {
+      const secondaryKey = muscleAtLevel(e.secondaryMuscle, levelRank);
+      totals[secondaryKey] = (totals[secondaryKey] || 0) + vol * SECONDARY_MUSCLE_VOLUME_WEIGHT;
+    }
   }
   return totals;
 }
 
 // Same breakdown, aggregated across every day type in the current program —
 // e.g. "how much volume does chest get across my whole split".
-function programMuscleVolumeAll() {
+function programMuscleVolumeAll(levelRank = 0) {
   const totals = {};
   for (const dt of PROGRAM_DAY_TYPES) {
-    const dayTotals = programMuscleVolume(dt.key);
+    const dayTotals = programMuscleVolume(dt.key, levelRank);
     for (const [key, val] of Object.entries(dayTotals)) {
       totals[key] = (totals[key] || 0) + val;
     }
@@ -1097,12 +1237,25 @@ function programMuscleVolumeAll() {
   return totals;
 }
 
-function muscleVolumeBreakdownHtml(totals) {
-  const entries = MUSCLE_GROUPS
-    .map((m) => ({ label: m.label, volume: totals[m.key] || 0 }))
-    .filter((x) => x.volume > 0);
-  if (!entries.length) return "";
-  return `<p class="text-faint" style="margin:6px 0 0; font-size:12px;">${entries.map((x) => `${escapeHtml(x.label)}: ${x.volume}`).join(" · ")}</p>`;
+// Renders a muscle-volume breakdown. At Standard (levelRank 0) this is the
+// same flat "Label: value" list as before. At Advanced/Anatomical, each
+// main group's line rolls up all of its sub-muscle volume into one total,
+// with the individual sub-muscle contributions shown alongside it — so the
+// dashboard stays anchored to the familiar main groups even when the
+// underlying data is more detailed.
+function muscleVolumeBreakdownHtml(totals, levelRank = 0) {
+  const lines = MUSCLE_GROUPS.map((main) => {
+    const descKeys = muscleDescendantKeys(main.key);
+    const mainTotal = descKeys.reduce((sum, k) => sum + (totals[k] || 0), 0);
+    if (mainTotal <= 0) return null;
+    const subEntries = levelRank > 0
+      ? descKeys.filter((k) => k !== main.key && totals[k] > 0).map((k) => `${escapeHtml(muscleGroupLabel(k))}: ${roundTo(totals[k])}`)
+      : [];
+    const subHtml = subEntries.length ? ` <span class="text-faint">(${subEntries.join(" · ")})</span>` : "";
+    return `${escapeHtml(main.label)}: ${roundTo(mainTotal)}${subHtml}`;
+  }).filter(Boolean);
+  if (!lines.length) return "";
+  return `<p class="text-faint" style="margin:6px 0 0; font-size:12px;">${lines.join(" · ")}</p>`;
 }
 
 function allExerciseDefs() {
@@ -1345,6 +1498,7 @@ const DEFAULT_SETTINGS = {
   accentColor: null, // null = default crimson; else a "#rrggbb" hex string
   scheduleStartDate: todayDateStr(), // ISO date — day 1 of the training sequence cycle (see programState.pattern); reset to today whenever setup finishes
   exerciseUnits: {}, // { [exerciseId]: "kg" | "lb" }, missing entries default to kg
+  muscleDetailLevel: "standard", // "standard" | "advanced" | "anatomical" — see MUSCLE_DETAIL_LEVELS
 };
 
 const DEFAULT_PROGRAM_STATE = {
@@ -3442,7 +3596,7 @@ async function exercisesRenderList(container, navigate, query = "") {
           <div class="history-item" data-id="${d.id}" style="cursor:pointer;">
             <div class="h-body">
               <div class="h-title">${escapeHtml(d.name)} ${d.unilateral ? `<span class="badge badge-uni">Unilateral</span>` : ""}</div>
-              <div class="h-meta">${muscleGroupLabel(d.muscleGroup)} · ${d.sets} programmed set${d.sets > 1 ? "s" : ""}${lastPerformed[d.id] ? ` · last ${formatDateShort(lastPerformed[d.id])}` : ""}</div>
+              <div class="h-meta">${muscleGroupLabel(d.muscleGroup)}${d.secondaryMuscle ? ` + ${muscleGroupLabel(d.secondaryMuscle)}` : ""} · ${d.sets} programmed set${d.sets > 1 ? "s" : ""}${lastPerformed[d.id] ? ` · last ${formatDateShort(lastPerformed[d.id])}` : ""}</div>
             </div>
             <div class="h-chevron">›</div>
           </div>`).join("")}
@@ -3492,7 +3646,7 @@ async function exercisesRenderDetail(container, navigate, params) {
     <button class="link-btn" data-act="back">‹ Exercises</button>
     <h1 style="font-size:22px; margin-top:10px;">${escapeHtml(def.name)}</h1>
     <div class="ex-sub" style="margin-top:6px; display:flex; gap:8px; align-items:center;">
-      <span class="text-faint">${def.sets} programmed sets · ${muscleGroupLabel(def.muscleGroup)}</span>
+      <span class="text-faint">${def.sets} programmed sets · ${muscleGroupLabel(def.muscleGroup)}${def.secondaryMuscle ? ` + ${muscleGroupLabel(def.secondaryMuscle)}` : ""}</span>
       ${def.unilateral ? `<span class="badge badge-uni">Unilateral</span>` : ""}
     </div>
 
@@ -4406,8 +4560,9 @@ async function doReset(container, navigate) {
   settingsRender(container, navigate);
 }
 
-function renderProgramExRow(e, type, isFirst, isLast) {
+function renderProgramExRow(e, type, isFirst, isLast, levelRank = 0) {
   const muscleKey = e.muscleGroup || "other";
+  const secondaryKey = e.secondaryMuscle || "";
   return `
     <div class="flex-between" style="padding:8px 0; border-top:1px solid var(--c-hairline); gap:8px; flex-wrap:wrap;">
       <span style="display:flex; align-items:center; gap:6px;">
@@ -4422,8 +4577,11 @@ function renderProgramExRow(e, type, isFirst, isLast) {
         <span class="numeric text-dim" style="min-width:30px; text-align:center;">${e.sets}×</span>
         <button class="link-btn" data-act="inc-sets" data-id="${e.id}" style="font-size:16px; padding:2px 9px; border:1px solid var(--c-hairline-strong); border-radius:6px;">+</button>
         <button class="link-btn" data-act="toggle-uni" data-id="${e.id}" data-current="${!!e.unilateral}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px; margin-left:4px;">${e.unilateral ? "Uni" : "Bi"}</button>
-        <select data-act="set-muscle" data-id="${e.id}" style="font-size:11px; padding:3px 6px; border:1px solid var(--c-hairline-strong); border-radius:6px; background:var(--c-panel); color:var(--c-off);">
-          ${MUSCLE_GROUPS.map((m) => `<option value="${m.key}" ${m.key === muscleKey ? "selected" : ""}>${escapeHtml(m.label)}</option>`).join("")}
+        <select data-act="set-muscle" data-id="${e.id}" title="Primary muscle" style="font-size:11px; padding:3px 6px; border:1px solid var(--c-hairline-strong); border-radius:6px; background:var(--c-panel); color:var(--c-off);">
+          ${muscleOptionsHtml(muscleKey, levelRank, false)}
+        </select>
+        <select data-act="set-secondary-muscle" data-id="${e.id}" title="Secondary muscle (optional)" style="font-size:11px; padding:3px 6px; border:1px solid var(--c-hairline-strong); border-radius:6px; background:var(--c-panel); color:var(--c-off);">
+          ${muscleOptionsHtml(secondaryKey, levelRank, true)}
         </select>
         <button class="link-btn" data-act="remove-ex" data-id="${e.id}" style="color:var(--c-crimson-bright); font-size:12px; margin-left:6px;">Remove</button>
       </span>
@@ -4493,28 +4651,42 @@ async function renderProgramOverview(container, navigate) {
     return;
   }
 
-  const wholeProgramMuscle = programMuscleVolumeAll();
+  const settings = await storage.getSettings();
+  const detailLevel = settings.muscleDetailLevel || "standard";
+  const levelRank = muscleDetailRank(detailLevel);
+  const wholeProgramMuscle = programMuscleVolumeAll(levelRank);
 
   container.innerHTML = `
     <button class="link-btn" data-act="back">‹ Settings</button>
     <h1 style="font-size:22px; margin:10px 0 16px;">Program Overview</h1>
+
+    <div class="section-title"><h2>Muscle Detail Level</h2></div>
+    <div class="card">
+      <div class="field" style="margin-bottom:0;">
+        <div class="toggle-row" id="muscle-detail-toggle">
+          ${MUSCLE_DETAIL_LEVELS.map((l) => `<button type="button" data-value="${l.key}" class="${l.key === detailLevel ? "active" : ""}">${escapeHtml(l.label)}</button>`).join("")}
+        </div>
+        <p class="text-faint" style="margin:10px 0 0; font-size:12.5px;">Standard shows just the main muscle groups. Advanced adds useful sub-muscles (brachialis, adductors, erectors…). Anatomical breaks things down to individual heads/regions (triceps heads, quad regions…). This only changes how much detail is shown — it never affects your workout history.</p>
+      </div>
+    </div>
+
     ${PROGRAM_DAY_TYPES.map((dt) => {
       const def = PROGRAM[dt.key];
       return `
         <div class="section-title"><h2>${escapeHtml(def.label)} — ${programVolumeSets(dt.key)} volume sets</h2></div>
         <div class="card">
-          ${def.exercises.length ? def.exercises.map((e, i) => renderProgramExRow(e, dt.key, i === 0, i === def.exercises.length - 1)).join("") : `<p class="text-faint" style="margin:0;">No exercises in ${escapeHtml(def.label)} yet.</p>`}
-          ${muscleVolumeBreakdownHtml(programMuscleVolume(dt.key))}
+          ${def.exercises.length ? def.exercises.map((e, i) => renderProgramExRow(e, dt.key, i === 0, i === def.exercises.length - 1, levelRank)).join("") : `<p class="text-faint" style="margin:0;">No exercises in ${escapeHtml(def.label)} yet.</p>`}
+          ${muscleVolumeBreakdownHtml(programMuscleVolume(dt.key, levelRank), levelRank)}
         </div>`;
     }).join("")}
-    <p class="text-faint" style="margin-bottom:22px;">Use −/+ to change sets, Bi/Uni to switch between bilateral and unilateral, the muscle dropdown to tag what an exercise trains, or Remove to drop an exercise from future workouts. Unilateral exercises count double toward volume, since both sides perform the programmed sets. Historical workouts always keep what was actually performed, whatever you change here.</p>
+    <p class="text-faint" style="margin-bottom:22px;">Use −/+ to change sets, Bi/Uni to switch between bilateral and unilateral, the muscle dropdowns to tag what an exercise trains (primary, and optionally a secondary muscle it also works), or Remove to drop an exercise from future workouts. Unilateral exercises count double toward volume, since both sides perform the programmed sets. A secondary muscle counts at half weight, since it's worked less directly than the primary target. Historical workouts always keep what was actually performed, whatever you change here.</p>
 
     <div class="section-title"><h2>Volume by Muscle Group</h2></div>
     <div class="card">
       ${Object.values(wholeProgramMuscle).some((v) => v > 0)
-        ? muscleVolumeBreakdownHtml(wholeProgramMuscle)
+        ? muscleVolumeBreakdownHtml(wholeProgramMuscle, levelRank)
         : `<p class="text-faint" style="margin:0;">Tag your exercises with a muscle group below to see volume per muscle across your whole program.</p>`}
-      <p class="text-faint" style="margin:8px 0 0; font-size:12px;">Totals across one pass through your whole split (all day types, once each). Unilateral exercises count double.</p>
+      <p class="text-faint" style="margin:8px 0 0; font-size:12px;">Totals across one pass through your whole split (all day types, once each). Unilateral exercises count double; secondary muscles count at half weight.</p>
     </div>
 
     <div class="section-title"><h2>Add Exercise</h2></div>
@@ -4537,9 +4709,15 @@ async function renderProgramOverview(container, navigate) {
         </div>
       </div>
       <div class="field">
-        <label for="custom-ex-muscle">Muscle group</label>
+        <label for="custom-ex-muscle">Primary muscle</label>
         <select id="custom-ex-muscle">
-          ${MUSCLE_GROUPS.map((m) => `<option value="${m.key}">${escapeHtml(m.label)}</option>`).join("")}
+          ${muscleOptionsHtml(null, levelRank, false)}
+        </select>
+      </div>
+      <div class="field">
+        <label for="custom-ex-secondary-muscle">Secondary muscle (optional)</label>
+        <select id="custom-ex-secondary-muscle">
+          ${muscleOptionsHtml(null, levelRank, true)}
         </select>
       </div>
       <div class="field" style="margin-bottom:0;">
@@ -4567,6 +4745,11 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
   `;
 
   qs('[data-act="back"]', container).addEventListener("click", () => navigate("settings"));
+
+  wireToggle(qs("#muscle-detail-toggle", container), async (value) => {
+    await storage.saveSettings({ muscleDetailLevel: value });
+    renderProgramOverview(container, navigate);
+  });
 
   qsa('[data-act="move-up"], [data-act="move-down"]', container).forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -4612,6 +4795,15 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
     sel.addEventListener("change", async () => {
       const id = sel.dataset.id;
       await storage.updateCustomExercise(id, { muscleGroup: sel.value });
+      applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
+      renderProgramOverview(container, navigate);
+    });
+  });
+
+  qsa('[data-act="set-secondary-muscle"]', container).forEach((sel) => {
+    sel.addEventListener("change", async () => {
+      const id = sel.dataset.id;
+      await storage.updateCustomExercise(id, { secondaryMuscle: sel.value || null });
       applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
       renderProgramOverview(container, navigate);
     });
@@ -4668,8 +4860,9 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     const id = `custom-${slug || "exercise"}-${uid().slice(0, 6)}`;
     const muscleGroup = qs("#custom-ex-muscle", container).value;
+    const secondaryMuscle = qs("#custom-ex-secondary-muscle", container).value || null;
 
-    await storage.addCustomExercise({ id, name, type: selectedType, sets, unilateral: selectedUni, muscleGroup, createdAt: nowISO() });
+    await storage.addCustomExercise({ id, name, type: selectedType, sets, unilateral: selectedUni, muscleGroup, secondaryMuscle, createdAt: nowISO() });
     applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
     toast(`${name} added to ${PROGRAM[selectedType]?.label || selectedType}`);
     renderProgramOverview(container, navigate);
