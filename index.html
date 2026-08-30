@@ -1075,6 +1075,18 @@ function dayTypeLabels() {
   return map;
 }
 
+// Assigns a stable color to each day-type key so the same type always
+// looks the same across the Next-7-Days strip and the month calendar.
+// "R" (Rest) always gets the dim/neutral treatment; everything else
+// cycles through a small accent palette by position in PROGRAM_DAY_TYPES.
+const DAY_TYPE_COLOR_VARS = ["--c-positive", "--c-crimson-bright", "--c-gold", "--c-warn"];
+function dayTypeColorVar(key) {
+  if (!key || key === "R") return "--c-off-faint";
+  const idx = PROGRAM_DAY_TYPES.findIndex((dt) => dt.key === key);
+  if (idx < 0) return "--c-off-faint";
+  return DAY_TYPE_COLOR_VARS[idx % DAY_TYPE_COLOR_VARS.length];
+}
+
 // Which day type (or "R" for rest) the training pattern schedules for a
 // given date, cycling the pattern from settings.scheduleStartDate. Returns
 // null if there's no pattern yet (setup not complete, or a freshly-created
@@ -1089,12 +1101,45 @@ function cycleLetterForDate(dateObj, startDateStr, pattern) {
   return pattern[idx];
 }
 
+// A YYYY-MM-DD key for a date, in local time (not UTC) — used to key
+// per-date schedule overrides so "today" means the user's actual today.
+function dateKey(dateObj) {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const d = String(dateObj.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+// Adds (or subtracts, with a negative delta) whole days to a "YYYY-MM-DD"
+// string, returning a new "YYYY-MM-DD" string. Used by the Schedule tab's
+// "shift everything forward/back a day" quick actions.
+function addDaysToDateStr(dateStr, delta) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(y, m - 1, d + delta);
+  return dateKey(dt);
+}
+
+// Like cycleLetterForDate, but lets a per-date override (set from the
+// Schedule tab) take precedence over the repeating pattern for that one
+// day — e.g. swapping a single Tuesday to Rest without touching the cycle.
+// overrides is a map of dateKey -> dayType key (or "R"), from
+// storage.getScheduleOverrides().
+function effectiveDayTypeForDate(dateObj, startDateStr, pattern, overrides) {
+  const key = dateKey(dateObj);
+  if (overrides && Object.prototype.hasOwnProperty.call(overrides, key)) {
+    return overrides[key];
+  }
+  return cycleLetterForDate(dateObj, startDateStr, pattern);
+}
+
 // What the training pattern schedules for today, given today's date —
 // returns a day-type key, "R" for a rest day, or null if no pattern is set
 // yet. Used to drive the dashboard/workout-home "Suggested" badge.
-function todaysScheduledType(settings, programState) {
+// overrides is optional; pass storage.getScheduleOverrides() result when
+// available so a manual swap for today is respected.
+function todaysScheduledType(settings, programState, overrides) {
   const startDateStr = settings.scheduleStartDate || DEFAULT_SETTINGS.scheduleStartDate;
-  return cycleLetterForDate(new Date(), startDateStr, programState.pattern || []);
+  return effectiveDayTypeForDate(new Date(), startDateStr, programState.pattern || [], overrides || {});
 }
 // ============================================================================
 // DB — low-level Supabase-backed storage engine.
@@ -1204,6 +1249,7 @@ const KV_CUSTOM_EXERCISES = "customExercises";
 const KV_PROGRAM_OVERRIDES = "programOverrides";
 const KV_EXERCISE_ORDER = "exerciseOrder";
 const KV_SCHEDULE_BLOCKS = "scheduleBlocks";
+const KV_SCHEDULE_OVERRIDES = "scheduleOverrides";
 
 // New/reset users start with no schedule blocks at all — the Schedule tab
 // shows "No blocks set for this day type yet" until they add their own.
@@ -1525,11 +1571,36 @@ async function setScheduleBlocks(dayType, blocks) {
 }
 
 // ---------------------------------------------------------------------------
+// Schedule overrides — per-date swaps that take precedence over the
+// repeating training pattern for a single day, without editing the pattern
+// itself. Stored as { "YYYY-MM-DD": dayTypeKey | "R" }.
+// ---------------------------------------------------------------------------
+
+async function getScheduleOverrides() {
+  const rec = await db.get(STORES.KV, KV_SCHEDULE_OVERRIDES);
+  return rec ? rec.data : {};
+}
+
+async function setScheduleOverride(dateKeyStr, dayTypeOrNull) {
+  return saving(async () => {
+    const current = await getScheduleOverrides();
+    const updated = { ...current };
+    if (dayTypeOrNull === null) {
+      delete updated[dateKeyStr];
+    } else {
+      updated[dateKeyStr] = dayTypeOrNull;
+    }
+    await db.put(STORES.KV, { key: KV_SCHEDULE_OVERRIDES, data: updated });
+    return updated;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Export / Import / Reset
 // ---------------------------------------------------------------------------
 
 async function exportAllData() {
-  const [workouts, active, settings, programState, meta, customExercises, programOverrides, exerciseOrder, scheduleBlocks] = await Promise.all([
+  const [workouts, active, settings, programState, meta, customExercises, programOverrides, exerciseOrder, scheduleBlocks, scheduleOverrides] = await Promise.all([
     getWorkouts(),
     getActiveWorkout(),
     getSettings(),
@@ -1539,6 +1610,7 @@ async function exportAllData() {
     getProgramOverrides(),
     getExerciseOrder(),
     getScheduleBlocks(),
+    getScheduleOverrides(),
   ]);
 
   return {
@@ -1552,6 +1624,7 @@ async function exportAllData() {
     programOverrides,
     exerciseOrder,
     scheduleBlocks,
+    scheduleOverrides,
     exerciseDefinitions: allExerciseDefs(),
   };
 }
@@ -1618,6 +1691,8 @@ async function importAllData(raw) {
 
     await db.put(STORES.KV, { key: KV_SCHEDULE_BLOCKS, data: (data.scheduleBlocks && typeof data.scheduleBlocks === "object") ? data.scheduleBlocks : DEFAULT_SCHEDULE_BLOCKS });
 
+    await db.put(STORES.KV, { key: KV_SCHEDULE_OVERRIDES, data: (data.scheduleOverrides && typeof data.scheduleOverrides === "object") ? data.scheduleOverrides : {} });
+
     await db.put(STORES.KV, { key: KV_META, schemaVersion: SCHEMA_VERSION, lastBackupAt: (await getMeta()).lastBackupAt });
 
     return { ok: true };
@@ -1634,6 +1709,7 @@ async function resetAllData() {
     await db.put(STORES.KV, { key: KV_PROGRAM_OVERRIDES, data: {} });
     await db.put(STORES.KV, { key: KV_EXERCISE_ORDER, data: {} });
     await db.put(STORES.KV, { key: KV_SCHEDULE_BLOCKS, data: DEFAULT_SCHEDULE_BLOCKS });
+    await db.put(STORES.KV, { key: KV_SCHEDULE_OVERRIDES, data: {} });
     await db.put(STORES.KV, { key: KV_META, schemaVersion: SCHEMA_VERSION, lastBackupAt: null });
   });
 }
@@ -1647,6 +1723,7 @@ const storage = {
   getProgramOverrides, setProgramOverride, restoreProgramExercise,
   getExerciseOrder, setExerciseOrder,
   getScheduleBlocks, setScheduleBlocks,
+  getScheduleOverrides, setScheduleOverride,
   exportAllData, markBackupComplete, importAllData, resetAllData,
 };
 function applyTheme(theme) {
@@ -1760,6 +1837,41 @@ function closeAnyModal() {
   modalRoot.innerHTML = "";
 }
 
+// Lets the user override a single date's day type (or clear an existing
+// override to fall back to the repeating pattern). Resolves to:
+//   { action: "set", value: dayTypeKey|"R" } | { action: "clear" } | null
+function scheduleOverrideModal({ dateLabel, patternLetter, currentOverride, dayTypeOptions, labelsMap }) {
+  return new Promise((resolve) => {
+    const options = [...dayTypeOptions.map((dt) => dt.key), "R"];
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="override-modal-title">
+        <h3 id="override-modal-title">${escapeHtml(dateLabel)}</h3>
+        <p class="text-faint" style="margin-top:0;">Pattern says ${escapeHtml(patternLetter ? (labelsMap[patternLetter] || patternLetter) : "–")}. Pick a different type just for this day, without changing your sequence.</p>
+        <div class="btn-row" style="flex-wrap:wrap; gap:8px; margin:14px 0;">
+          ${options.map((k) => `<button class="btn ${k === currentOverride ? "btn-primary" : ""}" data-act="pick" data-value="${k}" type="button">${escapeHtml(labelsMap[k] || k)}</button>`).join("")}
+        </div>
+        <div class="btn-row" style="margin-top:6px;">
+          ${currentOverride ? `<button class="btn btn-ghost" data-act="clear" type="button">Reset to pattern</button>` : ""}
+          <button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button>
+        </div>
+      </div>`;
+    modalRoot.appendChild(overlay);
+
+    function close(result) {
+      overlay.remove();
+      resolve(result);
+    }
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
+    overlay.querySelector('[data-act="cancel"]').addEventListener("click", () => close(null));
+    overlay.querySelector('[data-act="clear"]')?.addEventListener("click", () => close({ action: "clear" }));
+    overlay.querySelectorAll('[data-act="pick"]').forEach((btn) => {
+      btn.addEventListener("click", () => close({ action: "set", value: btn.dataset.value }));
+    });
+  });
+}
+
 // Wires the header save indicator to storage.js's onSaveStateChange stream.
 function initSaveIndicator(onSaveStateChange) {
   const indicator = document.getElementById("save-indicator");
@@ -1776,11 +1888,12 @@ function initSaveIndicator(onSaveStateChange) {
 function qs(sel, root = document) { return root.querySelector(sel); }
 function qsa(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
 async function dashboardRender(container, navigate) {
-  const [active, workouts, programState, settingsData] = await Promise.all([
+  const [active, workouts, programState, settingsData, scheduleOverrides] = await Promise.all([
     storage.getActiveWorkout(),
     storage.getWorkouts(),
     storage.getProgramState(),
     storage.getSettings(),
+    storage.getScheduleOverrides(),
   ]);
 
   if (!programState.setupComplete) {
@@ -1797,7 +1910,7 @@ async function dashboardRender(container, navigate) {
     return;
   }
 
-  const suggested = todaysScheduledType(settingsData, programState);
+  const suggested = todaysScheduledType(settingsData, programState, scheduleOverrides);
   const loggedWorkouts = workouts.filter((w) => w.status !== "abandoned");
   const streak = computeStreak(workouts);
   const totalVolume = workouts.reduce((sum, w) => sum + workoutVolume(w), 0);
@@ -1989,14 +2102,15 @@ function teardown() {
 
 async function renderWorkoutHome(container, navigate) {
   teardown();
-  const [active, workouts, programState, settingsData] = await Promise.all([
+  const [active, workouts, programState, settingsData, scheduleOverrides] = await Promise.all([
     storage.getActiveWorkout(),
     storage.getWorkouts(),
     storage.getProgramState(),
     storage.getSettings(),
+    storage.getScheduleOverrides(),
   ]);
 
-  const suggested = todaysScheduledType(settingsData, programState);
+  const suggested = todaysScheduledType(settingsData, programState, scheduleOverrides);
 
   let html = "";
 
@@ -3444,12 +3558,14 @@ function scheduleBlockRow(time, label) {
 let scheduleDraft = null;
 let scheduleDraftDayType = "training";
 let patternDraft = null; // array of dayType keys / "R", edited in place before Save
+let calendarMonthOffset = 0; // months from current month, for the month-view nav
 
 async function renderSchedule(container, navigate) {
   const settingsData = await storage.getSettings();
   const programState = await storage.getProgramState();
   const startDateStr = settingsData.scheduleStartDate || DEFAULT_SETTINGS.scheduleStartDate;
   const storedBlocks = await storage.getScheduleBlocks();
+  const overrides = await storage.getScheduleOverrides();
   scheduleDraft = {
     training: storedBlocks.training.map((b) => ({ ...b })),
     rest: storedBlocks.rest.map((b) => ({ ...b })),
@@ -3463,24 +3579,105 @@ async function renderSchedule(container, navigate) {
   const next7 = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
-    next7.push({ date: d, letter: cycleLetterForDate(d, startDateStr, pattern) });
+    const key = dateKey(d);
+    next7.push({
+      date: d,
+      key,
+      patternLetter: cycleLetterForDate(d, startDateStr, pattern),
+      letter: effectiveDayTypeForDate(d, startDateStr, pattern, overrides),
+      isOverride: Object.prototype.hasOwnProperty.call(overrides, key),
+    });
   }
   const todayLetter = next7[0].letter;
   const todayBlocks = todayLetter === "R" || !todayLetter ? storedBlocks.rest : storedBlocks.training;
 
+  // Month calendar grid for the currently-viewed month (calendarMonthOffset
+  // months from "now"). Weeks start on Sunday; leading/trailing cells from
+  // adjacent months are shown dimmed but are not clickable.
+  const viewMonth = new Date(today.getFullYear(), today.getMonth() + calendarMonthOffset, 1);
+  const monthLabel = viewMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const firstWeekday = viewMonth.getDay();
+  const daysInMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0).getDate();
+  const todayKey = dateKey(today);
+
+  const calendarCells = [];
+  for (let i = 0; i < firstWeekday; i++) calendarCells.push(null);
+  for (let day = 1; day <= daysInMonth; day++) {
+    const d = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), day);
+    const key = dateKey(d);
+    calendarCells.push({
+      day,
+      date: d,
+      key,
+      letter: pattern.length ? effectiveDayTypeForDate(d, startDateStr, pattern, overrides) : null,
+      isOverride: Object.prototype.hasOwnProperty.call(overrides, key),
+      isToday: key === todayKey,
+    });
+  }
+
   container.innerHTML = `
     <h1 style="font-size:22px; margin:6px 0 16px;">Schedule</h1>
 
-    <div class="section-title"><h2>Today — ${todayLetter ? (labels[todayLetter] || todayLetter) : "No pattern set"}</h2></div>
+    <div class="section-title"><h2>Today — ${todayLetter ? (labels[todayLetter] || todayLetter) : "No pattern set"}${next7[0].isOverride ? ` <span class="text-faint" style="font-weight:400; font-size:12px;">(swapped)</span>` : ""}</h2></div>
     <div class="card">${todayBlocks.length ? todayBlocks.map((b) => scheduleBlockRow(b.time, b.label)).join("") : `<p class="text-faint" style="margin:0;">No blocks set for this day type yet — add some below.</p>`}</div>
 
     <div class="section-title"><h2>Next 7 Days</h2></div>
+    <p class="text-faint" style="margin:-8px 0 10px;">Tap a day to swap it for something else, just for that day.</p>
     <div class="card">
-      ${next7.map(({ date, letter }, i) => `
-        <div class="flex-between" style="padding:8px 0; border-top:1px solid var(--c-hairline);">
+      ${next7.map(({ date, letter, key, isOverride }, i) => `
+        <button type="button" class="flex-between schedule-day-row" data-key="${key}" data-idx="${i}" style="width:100%; text-align:left; background:none; border:none; border-top:1px solid var(--c-hairline); padding:10px 0; color:inherit; font:inherit; cursor:pointer;">
           <span>${i === 0 ? "Today" : date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</span>
-          <span class="badge ${!letter || letter === "R" ? "" : "badge-positive"}">${letter ? (labels[letter] || letter) : "–"}</span>
-        </div>`).join("")}
+          <span style="display:flex; align-items:center; gap:6px;">
+            ${isOverride ? `<span class="text-faint" style="font-size:11px;">swapped</span>` : ""}
+            <span class="badge" style="color:var(${dayTypeColorVar(letter)}); border-color:var(${dayTypeColorVar(letter)});">${letter ? (labels[letter] || letter) : "–"}</span>
+          </span>
+        </button>`).join("")}
+    </div>
+
+    <div class="section-title"><h2>Month View</h2></div>
+    <div class="card">
+      <div class="flex-between" style="margin-bottom:12px;">
+        <button class="link-btn" id="cal-prev" type="button">‹ Prev</button>
+        <strong>${escapeHtml(monthLabel)}</strong>
+        <button class="link-btn" id="cal-next" type="button">Next ›</button>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:4px; text-align:center; font-size:10.5px; color:var(--c-off-faint); margin-bottom:4px;">
+        ${["S","M","T","W","T","F","S"].map((d) => `<div>${d}</div>`).join("")}
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:4px;">
+        ${calendarCells.map((c) => {
+          if (!c) return `<div></div>`;
+          const colorVar = dayTypeColorVar(c.letter);
+          return `
+            <button type="button" class="cal-day-cell" data-key="${c.key}" ${pattern.length ? "" : "disabled"} style="
+              aspect-ratio:1; border-radius:8px; border:1px solid ${c.isToday ? "var(--c-off)" : "var(--c-hairline)"};
+              background:${c.letter ? `color-mix(in srgb, var(${colorVar}) 18%, transparent)` : "transparent"};
+              color:var(--c-off); font:inherit; font-size:12px; cursor:${pattern.length ? "pointer" : "default"};
+              display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; position:relative;
+              padding:0;
+            ">
+              <span class="numeric" style="font-weight:${c.isToday ? "700" : "400"};">${c.day}</span>
+              ${c.letter ? `<span style="width:5px; height:5px; border-radius:50%; background:var(${colorVar});"></span>` : ""}
+              ${c.isOverride ? `<span style="position:absolute; top:2px; right:3px; font-size:8px; color:var(--c-off-faint);">✦</span>` : ""}
+            </button>`;
+        }).join("")}
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:14px;">
+        ${[...PROGRAM_DAY_TYPES, { key: "R", label: "Rest" }].map((dt) => `
+          <span style="display:flex; align-items:center; gap:5px; font-size:11.5px; color:var(--c-off-dim);">
+            <span style="width:8px; height:8px; border-radius:50%; background:var(${dayTypeColorVar(dt.key)});"></span>${escapeHtml(dt.label)}
+          </span>`).join("")}
+      </div>
+      ${!pattern.length ? `<p class="text-faint" style="margin:12px 0 0;">Set a Training Sequence below to see it mapped onto the calendar.</p>` : ""}
+    </div>
+
+    <div class="section-title"><h2>Missed a Day?</h2></div>
+    <div class="card">
+      <p class="text-faint" style="margin:0 0 12px;">Push every day in your sequence forward or back by one — useful after a missed or unplanned extra rest day. This only affects today onward; past workout history is untouched.</p>
+      <div class="btn-row">
+        <button class="btn" id="shift-back-btn" type="button">◂ Shift Back 1 Day</button>
+        <button class="btn" id="shift-forward-btn" type="button">Shift Forward 1 Day ▸</button>
+      </div>
     </div>
 
     <div class="section-title"><h2>Training Sequence</h2></div>
@@ -3508,6 +3705,94 @@ async function renderSchedule(container, navigate) {
 
   renderPatternEditor(container, navigate);
   renderScheduleEditor(container, navigate);
+
+  qsa(".schedule-day-row", container).forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const idx = Number(btn.dataset.idx);
+      const entry = next7[idx];
+      const dateLabel = idx === 0 ? "Today" : entry.date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+      const result = await scheduleOverrideModal({
+        dateLabel,
+        patternLetter: entry.patternLetter,
+        currentOverride: entry.isOverride ? entry.letter : null,
+        dayTypeOptions: PROGRAM_DAY_TYPES,
+        labelsMap: labels,
+      });
+      if (!result) return;
+      if (result.action === "clear") {
+        await storage.setScheduleOverride(entry.key, null);
+        toast("Reset to pattern");
+      } else {
+        await storage.setScheduleOverride(entry.key, result.value);
+        toast(`${dateLabel} swapped to ${labels[result.value] || result.value}`);
+      }
+      renderSchedule(container, navigate);
+    });
+  });
+
+  qsa(".cal-day-cell", container).forEach((btn) => {
+    if (btn.disabled) return;
+    btn.addEventListener("click", async () => {
+      const key = btn.dataset.key;
+      const [y, m, d] = key.split("-").map(Number);
+      const cellDate = new Date(y, m - 1, d);
+      const patternLetter = cycleLetterForDate(cellDate, startDateStr, pattern);
+      const isOverride = Object.prototype.hasOwnProperty.call(overrides, key);
+      const currentLetter = isOverride ? overrides[key] : patternLetter;
+      const dateLabel = cellDate.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+      const result = await scheduleOverrideModal({
+        dateLabel,
+        patternLetter,
+        currentOverride: isOverride ? currentLetter : null,
+        dayTypeOptions: PROGRAM_DAY_TYPES,
+        labelsMap: labels,
+      });
+      if (!result) return;
+      if (result.action === "clear") {
+        await storage.setScheduleOverride(key, null);
+        toast("Reset to pattern");
+      } else {
+        await storage.setScheduleOverride(key, result.value);
+        toast(`${dateLabel} swapped to ${labels[result.value] || result.value}`);
+      }
+      renderSchedule(container, navigate);
+    });
+  });
+
+  qs("#cal-prev", container)?.addEventListener("click", () => {
+    calendarMonthOffset -= 1;
+    renderSchedule(container, navigate);
+  });
+  qs("#cal-next", container)?.addEventListener("click", () => {
+    calendarMonthOffset += 1;
+    renderSchedule(container, navigate);
+  });
+
+  qs("#shift-forward-btn", container)?.addEventListener("click", async () => {
+    const ok = await confirmModal({
+      title: "Shift schedule forward 1 day?",
+      body: "Today onward, every date now shows what was previously scheduled for the day after it — useful if you trained an extra day and want to catch up. Past workout history is untouched.",
+      confirmLabel: "Shift Forward",
+    });
+    if (!ok) return;
+    const newStart = addDaysToDateStr(startDateStr, -1);
+    await storage.saveSettings({ scheduleStartDate: newStart });
+    toast("Schedule shifted forward");
+    renderSchedule(container, navigate);
+  });
+
+  qs("#shift-back-btn", container)?.addEventListener("click", async () => {
+    const ok = await confirmModal({
+      title: "Shift schedule back 1 day?",
+      body: "Today onward, every date now shows what was previously scheduled for the day before it — useful after a missed or unplanned extra rest day. Past workout history is untouched.",
+      confirmLabel: "Shift Back",
+    });
+    if (!ok) return;
+    const newStart = addDaysToDateStr(startDateStr, 1);
+    await storage.saveSettings({ scheduleStartDate: newStart });
+    toast("Schedule shifted back");
+    renderSchedule(container, navigate);
+  });
 
   qs("#schedule-start-save", container).addEventListener("click", async () => {
     const val = qs("#schedule-start-date", container).value;
