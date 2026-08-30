@@ -969,6 +969,29 @@ function getExerciseUnit(settings, exerciseId) {
 
 const SCHEMA_VERSION = 1;
 
+// Fixed list of target muscle groups an exercise can be tagged with, used
+// for per-muscle volume tallies. "other" is the default for exercises that
+// haven't been tagged yet.
+const MUSCLE_GROUPS = [
+  { key: "chest", label: "Chest" },
+  { key: "back", label: "Back" },
+  { key: "shoulders", label: "Shoulders" },
+  { key: "biceps", label: "Biceps" },
+  { key: "triceps", label: "Triceps" },
+  { key: "forearms", label: "Forearms" },
+  { key: "quads", label: "Quads" },
+  { key: "hamstrings", label: "Hamstrings" },
+  { key: "glutes", label: "Glutes" },
+  { key: "calves", label: "Calves" },
+  { key: "abs", label: "Abs / Core" },
+  { key: "traps", label: "Traps" },
+  { key: "other", label: "Other" },
+];
+
+function muscleGroupLabel(key) {
+  return MUSCLE_GROUPS.find((m) => m.key === key)?.label || "Other";
+}
+
 let PROGRAM = {};
 let PROGRAM_DAY_TYPES = []; // [{key,label}, ...] — set from programState at boot
 
@@ -988,7 +1011,7 @@ function rebuildProgram(customList, overrides, order) {
   for (const dt of PROGRAM_DAY_TYPES) {
     const custom = list
       .filter((c) => c.type === dt.key)
-      .map((c) => ({ id: c.id, name: c.name, sets: c.sets, unilateral: !!c.unilateral, custom: true }));
+      .map((c) => ({ id: c.id, name: c.name, sets: c.sets, unilateral: !!c.unilateral, muscleGroup: c.muscleGroup || "other", custom: true }));
     const withOverrides = custom
       .filter((e) => !ov[e.id]?.removed)
       .map((e) => {
@@ -998,6 +1021,7 @@ function rebuildProgram(customList, overrides, order) {
           ...e,
           ...(typeof o.sets === "number" ? { sets: o.sets } : {}),
           ...(typeof o.unilateral === "boolean" ? { unilateral: o.unilateral } : {}),
+          ...(typeof o.muscleGroup === "string" ? { muscleGroup: o.muscleGroup } : {}),
         };
       });
 
@@ -1023,6 +1047,62 @@ const applyCustomExercises = rebuildProgram;
 
 function programTotalSets(type) {
   return PROGRAM[type] ? PROGRAM[type].exercises.reduce((sum, e) => sum + e.sets, 0) : 0;
+}
+
+// Unilateral exercise volume rule: a unilateral exercise's programmed set
+// count (e.g. "2 sets") means 2 sets per side — both the left and the right
+// side perform the prescribed sets. So for training-volume purposes each
+// unilateral exercise contributes double its programmed sets, while its own
+// programmed set count (shown elsewhere, and what the user edits) never
+// changes. Applies uniformly across every workout day type (Upper, Lower,
+// Full Body, or any custom split) since it operates on PROGRAM[type] generically.
+const UNILATERAL_VOLUME_MULTIPLIER = 2;
+
+function exerciseVolumeSets(e) {
+  if (!e) return 0;
+  return e.sets * (e.unilateral ? UNILATERAL_VOLUME_MULTIPLIER : 1);
+}
+
+// Total training volume for a workout day type, in "volume sets": bilateral
+// exercises count their programmed sets once; unilateral exercises count
+// double (once per side). This is the figure used for total workout volume
+// — never the per-exercise programmed set count itself, which stays as-is.
+function programVolumeSets(type) {
+  return PROGRAM[type] ? PROGRAM[type].exercises.reduce((sum, e) => sum + exerciseVolumeSets(e), 0) : 0;
+}
+
+// Per-muscle-group volume for a workout day type: { muscleKey: volumeSets }.
+// Uses the same unilateral doubling as programVolumeSets, so a muscle
+// trained by a unilateral exercise gets credit for both sides' sets.
+function programMuscleVolume(type) {
+  const totals = {};
+  if (!PROGRAM[type]) return totals;
+  for (const e of PROGRAM[type].exercises) {
+    const key = e.muscleGroup || "other";
+    totals[key] = (totals[key] || 0) + exerciseVolumeSets(e);
+  }
+  return totals;
+}
+
+// Same breakdown, aggregated across every day type in the current program —
+// e.g. "how much volume does chest get across my whole split".
+function programMuscleVolumeAll() {
+  const totals = {};
+  for (const dt of PROGRAM_DAY_TYPES) {
+    const dayTotals = programMuscleVolume(dt.key);
+    for (const [key, val] of Object.entries(dayTotals)) {
+      totals[key] = (totals[key] || 0) + val;
+    }
+  }
+  return totals;
+}
+
+function muscleVolumeBreakdownHtml(totals) {
+  const entries = MUSCLE_GROUPS
+    .map((m) => ({ label: m.label, volume: totals[m.key] || 0 }))
+    .filter((x) => x.volume > 0);
+  if (!entries.length) return "";
+  return `<p class="text-faint" style="margin:6px 0 0; font-size:12px;">${entries.map((x) => `${escapeHtml(x.label)}: ${x.volume}`).join(" · ")}</p>`;
 }
 
 function allExerciseDefs() {
@@ -2138,7 +2218,7 @@ async function renderWorkoutHome(container, navigate) {
         <button class="choice-card" data-act="start" data-type="${dt.key}" ${active ? "disabled" : ""}>
           <div class="choice-icon">◆</div>
           <div class="choice-title">${escapeHtml(dt.label)}</div>
-          <div class="choice-sets">${programTotalSets(dt.key)} programmed sets</div>
+          <div class="choice-sets">${programVolumeSets(dt.key)} volume sets</div>
           ${suggested === dt.key && !active ? `<span class="badge badge-positive">Suggested</span>` : ""}
         </button>`).join("")}
     </div>
@@ -3362,7 +3442,7 @@ async function exercisesRenderList(container, navigate, query = "") {
           <div class="history-item" data-id="${d.id}" style="cursor:pointer;">
             <div class="h-body">
               <div class="h-title">${escapeHtml(d.name)} ${d.unilateral ? `<span class="badge badge-uni">Unilateral</span>` : ""}</div>
-              <div class="h-meta">${d.sets} programmed set${d.sets > 1 ? "s" : ""}${lastPerformed[d.id] ? ` · last ${formatDateShort(lastPerformed[d.id])}` : ""}</div>
+              <div class="h-meta">${muscleGroupLabel(d.muscleGroup)} · ${d.sets} programmed set${d.sets > 1 ? "s" : ""}${lastPerformed[d.id] ? ` · last ${formatDateShort(lastPerformed[d.id])}` : ""}</div>
             </div>
             <div class="h-chevron">›</div>
           </div>`).join("")}
@@ -3412,7 +3492,7 @@ async function exercisesRenderDetail(container, navigate, params) {
     <button class="link-btn" data-act="back">‹ Exercises</button>
     <h1 style="font-size:22px; margin-top:10px;">${escapeHtml(def.name)}</h1>
     <div class="ex-sub" style="margin-top:6px; display:flex; gap:8px; align-items:center;">
-      <span class="text-faint">${def.sets} programmed sets</span>
+      <span class="text-faint">${def.sets} programmed sets · ${muscleGroupLabel(def.muscleGroup)}</span>
       ${def.unilateral ? `<span class="badge badge-uni">Unilateral</span>` : ""}
     </div>
 
@@ -4327,6 +4407,7 @@ async function doReset(container, navigate) {
 }
 
 function renderProgramExRow(e, type, isFirst, isLast) {
+  const muscleKey = e.muscleGroup || "other";
   return `
     <div class="flex-between" style="padding:8px 0; border-top:1px solid var(--c-hairline); gap:8px; flex-wrap:wrap;">
       <span style="display:flex; align-items:center; gap:6px;">
@@ -4341,6 +4422,9 @@ function renderProgramExRow(e, type, isFirst, isLast) {
         <span class="numeric text-dim" style="min-width:30px; text-align:center;">${e.sets}×</span>
         <button class="link-btn" data-act="inc-sets" data-id="${e.id}" style="font-size:16px; padding:2px 9px; border:1px solid var(--c-hairline-strong); border-radius:6px;">+</button>
         <button class="link-btn" data-act="toggle-uni" data-id="${e.id}" data-current="${!!e.unilateral}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px; margin-left:4px;">${e.unilateral ? "Uni" : "Bi"}</button>
+        <select data-act="set-muscle" data-id="${e.id}" style="font-size:11px; padding:3px 6px; border:1px solid var(--c-hairline-strong); border-radius:6px; background:var(--c-panel); color:var(--c-off);">
+          ${MUSCLE_GROUPS.map((m) => `<option value="${m.key}" ${m.key === muscleKey ? "selected" : ""}>${escapeHtml(m.label)}</option>`).join("")}
+        </select>
         <button class="link-btn" data-act="remove-ex" data-id="${e.id}" style="color:var(--c-crimson-bright); font-size:12px; margin-left:6px;">Remove</button>
       </span>
     </div>`;
@@ -4409,18 +4493,29 @@ async function renderProgramOverview(container, navigate) {
     return;
   }
 
+  const wholeProgramMuscle = programMuscleVolumeAll();
+
   container.innerHTML = `
     <button class="link-btn" data-act="back">‹ Settings</button>
     <h1 style="font-size:22px; margin:10px 0 16px;">Program Overview</h1>
     ${PROGRAM_DAY_TYPES.map((dt) => {
       const def = PROGRAM[dt.key];
       return `
-        <div class="section-title"><h2>${escapeHtml(def.label)} — ${programTotalSets(dt.key)} sets</h2></div>
+        <div class="section-title"><h2>${escapeHtml(def.label)} — ${programVolumeSets(dt.key)} volume sets</h2></div>
         <div class="card">
           ${def.exercises.length ? def.exercises.map((e, i) => renderProgramExRow(e, dt.key, i === 0, i === def.exercises.length - 1)).join("") : `<p class="text-faint" style="margin:0;">No exercises in ${escapeHtml(def.label)} yet.</p>`}
+          ${muscleVolumeBreakdownHtml(programMuscleVolume(dt.key))}
         </div>`;
     }).join("")}
-    <p class="text-faint" style="margin-bottom:22px;">Use −/+ to change sets, Bi/Uni to switch between bilateral and unilateral, or Remove to drop an exercise from future workouts. Historical workouts always keep what was actually performed, whatever you change here.</p>
+    <p class="text-faint" style="margin-bottom:22px;">Use −/+ to change sets, Bi/Uni to switch between bilateral and unilateral, the muscle dropdown to tag what an exercise trains, or Remove to drop an exercise from future workouts. Unilateral exercises count double toward volume, since both sides perform the programmed sets. Historical workouts always keep what was actually performed, whatever you change here.</p>
+
+    <div class="section-title"><h2>Volume by Muscle Group</h2></div>
+    <div class="card">
+      ${Object.values(wholeProgramMuscle).some((v) => v > 0)
+        ? muscleVolumeBreakdownHtml(wholeProgramMuscle)
+        : `<p class="text-faint" style="margin:0;">Tag your exercises with a muscle group below to see volume per muscle across your whole program.</p>`}
+      <p class="text-faint" style="margin:8px 0 0; font-size:12px;">Totals across one pass through your whole split (all day types, once each). Unilateral exercises count double.</p>
+    </div>
 
     <div class="section-title"><h2>Add Exercise</h2></div>
     <div class="card">
@@ -4440,6 +4535,12 @@ async function renderProgramOverview(container, navigate) {
           <button type="button" data-value="bilateral" class="active">Bilateral</button>
           <button type="button" data-value="unilateral">Unilateral</button>
         </div>
+      </div>
+      <div class="field">
+        <label for="custom-ex-muscle">Muscle group</label>
+        <select id="custom-ex-muscle">
+          ${MUSCLE_GROUPS.map((m) => `<option value="${m.key}">${escapeHtml(m.label)}</option>`).join("")}
+        </select>
       </div>
       <div class="field" style="margin-bottom:0;">
         <label for="custom-ex-sets">Planned sets</label>
@@ -4507,6 +4608,15 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
     });
   });
 
+  qsa('[data-act="set-muscle"]', container).forEach((sel) => {
+    sel.addEventListener("change", async () => {
+      const id = sel.dataset.id;
+      await storage.updateCustomExercise(id, { muscleGroup: sel.value });
+      applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
+      renderProgramOverview(container, navigate);
+    });
+  });
+
   qsa('[data-act="remove-ex"]', container).forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.id;
@@ -4557,8 +4667,9 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
 
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     const id = `custom-${slug || "exercise"}-${uid().slice(0, 6)}`;
+    const muscleGroup = qs("#custom-ex-muscle", container).value;
 
-    await storage.addCustomExercise({ id, name, type: selectedType, sets, unilateral: selectedUni, createdAt: nowISO() });
+    await storage.addCustomExercise({ id, name, type: selectedType, sets, unilateral: selectedUni, muscleGroup, createdAt: nowISO() });
     applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
     toast(`${name} added to ${PROGRAM[selectedType]?.label || selectedType}`);
     renderProgramOverview(container, navigate);
