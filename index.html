@@ -969,11 +969,14 @@ function getExerciseUnit(settings, exerciseId) {
 
 const SCHEMA_VERSION = 1;
 
-// Fixed list of target muscle groups an exercise can be tagged with, used
-// for per-muscle volume tallies. "other" is the default for exercises that
-// haven't been tagged yet. This is the "Standard" detail level — always
-// shown, regardless of which detail level the user has selected — and the
-// level every sub-muscle below eventually rolls up to.
+// Flexible muscle targeting system --------------------------------------
+//
+// An exercise is tagged with one or more MUSCLES (e.g. "Back"), and each
+// muscle can carry any number of specific TARGET AREAS (e.g. "Lats",
+// "Upper Back"). The first entry in an exercise's `muscles` array is its
+// primary muscle; any further entries are "additional" muscles it also
+// trains. The user decides what an exercise targets — nothing here is
+// hard-coded to specific exercises.
 const MUSCLE_GROUPS = [
   { key: "chest", label: "Chest" },
   { key: "back", label: "Back" },
@@ -989,65 +992,128 @@ const MUSCLE_GROUPS = [
   { key: "traps", label: "Traps" },
   { key: "other", label: "Other" },
 ];
+const MUSCLE_BY_KEY = new Map(MUSCLE_GROUPS.map((m) => [m.key, m]));
 
-// Additional, more specific muscles offered once the user picks "Advanced"
-// (level 1) or "Anatomical" (level 2). Each one names its direct parent —
-// a main group for level 1, or a main group / level-1 muscle for level 2 —
-// so volume can always be "rolled up" to whatever level is being displayed.
-// This list is what makes the volume system capable of more detail without
-// touching the default (Standard) UI at all.
-const MUSCLE_SUBGROUPS = [
-  // level 1 — Advanced: useful synergist muscles worth tracking on their own
-  { key: "lats", label: "Lats", parent: "back", level: 1 },
-  { key: "rhomboids", label: "Rhomboids", parent: "back", level: 1 },
-  { key: "erectors", label: "Erectors (Lower Back)", parent: "back", level: 1 },
-  { key: "teres_major", label: "Teres Major", parent: "back", level: 1 },
-  { key: "brachialis", label: "Brachialis", parent: "biceps", level: 1 },
-  { key: "brachioradialis", label: "Brachioradialis", parent: "forearms", level: 1 },
-  { key: "adductors", label: "Adductors (Inner Thigh)", parent: "glutes", level: 1 },
-  { key: "abductors", label: "Abductors (Outer Hip)", parent: "glutes", level: 1 },
-  { key: "obliques", label: "Obliques", parent: "abs", level: 1 },
-  { key: "hip_flexors", label: "Hip Flexors", parent: "quads", level: 1 },
+// Preset target areas offered for each muscle. Purely a menu of suggestions
+// — the user can always add their own via "+ Add Target Area", and can
+// select any number of these for a given muscle.
+const TARGET_AREAS_BY_MUSCLE = {
+  chest: [
+    { key: "chest_upper", label: "Upper Chest" },
+    { key: "chest_mid", label: "Mid Chest" },
+    { key: "chest_lower", label: "Lower Chest" },
+  ],
+  back: [
+    { key: "lats", label: "Lats" },
+    { key: "upper_back", label: "Upper Back" },
+    { key: "mid_back", label: "Mid Back" },
+    { key: "lower_back", label: "Lower Back" },
+  ],
+  shoulders: [
+    { key: "front_delts", label: "Front Delts" },
+    { key: "lateral_delts", label: "Lateral Delts" },
+    { key: "rear_delts", label: "Rear Delts" },
+  ],
+  biceps: [
+    { key: "biceps_long", label: "Long Head" },
+    { key: "biceps_short", label: "Short Head" },
+    { key: "brachialis", label: "Brachialis" },
+  ],
+  triceps: [
+    { key: "triceps_long", label: "Long Head" },
+    { key: "triceps_lateral", label: "Lateral Head" },
+    { key: "triceps_medial", label: "Medial Head" },
+  ],
+  forearms: [
+    { key: "forearm_flexors", label: "Flexors" },
+    { key: "forearm_extensors", label: "Extensors" },
+    { key: "brachioradialis", label: "Brachioradialis" },
+  ],
+  quads: [
+    { key: "rectus_femoris", label: "Rectus Femoris" },
+    { key: "vastus_lateralis", label: "Vastus Lateralis" },
+    { key: "vastus_medialis", label: "Vastus Medialis" },
+  ],
+  hamstrings: [
+    { key: "biceps_femoris", label: "Biceps Femoris" },
+    { key: "semitendinosus", label: "Semitendinosus" },
+    { key: "semimembranosus", label: "Semimembranosus" },
+  ],
+  glutes: [
+    { key: "glute_max", label: "Glute Max" },
+    { key: "glute_med_min", label: "Glute Medius/Minimus" },
+  ],
+  calves: [
+    { key: "gastrocnemius", label: "Gastrocnemius" },
+    { key: "soleus", label: "Soleus" },
+  ],
+  abs: [
+    { key: "abs_upper", label: "Upper Abs" },
+    { key: "abs_lower", label: "Lower Abs" },
+    { key: "obliques", label: "Obliques" },
+  ],
+  traps: [
+    { key: "traps_upper", label: "Upper Traps" },
+    { key: "traps_mid_lower", label: "Mid / Lower Traps" },
+  ],
+  other: [],
+};
 
-  // level 2 — Anatomical: individual heads/regions, for the most detailed view
-  { key: "chest_upper", label: "Chest — Upper (Clavicular)", parent: "chest", level: 2 },
-  { key: "chest_lower", label: "Chest — Lower (Sternal)", parent: "chest", level: 2 },
-  { key: "triceps_long", label: "Triceps — Long Head", parent: "triceps", level: 2 },
-  { key: "triceps_lateral", label: "Triceps — Lateral Head", parent: "triceps", level: 2 },
-  { key: "triceps_medial", label: "Triceps — Medial Head", parent: "triceps", level: 2 },
-  { key: "biceps_long", label: "Biceps — Long Head", parent: "biceps", level: 2 },
-  { key: "biceps_short", label: "Biceps — Short Head", parent: "biceps", level: 2 },
-  { key: "delts_front", label: "Front Delt", parent: "shoulders", level: 2 },
-  { key: "delts_side", label: "Side Delt", parent: "shoulders", level: 2 },
-  { key: "delts_rear", label: "Rear Delt", parent: "shoulders", level: 2 },
-  { key: "quads_rectus_femoris", label: "Rectus Femoris", parent: "quads", level: 2 },
-  { key: "quads_vastus_lateralis", label: "Vastus Lateralis (Outer Quad)", parent: "quads", level: 2 },
-  { key: "quads_vastus_medialis", label: "Vastus Medialis (Inner Quad)", parent: "quads", level: 2 },
-  { key: "hamstrings_biceps_femoris", label: "Biceps Femoris (Outer Hamstring)", parent: "hamstrings", level: 2 },
-  { key: "hamstrings_medial", label: "Semitendinosus / -membranosus (Inner Hamstring)", parent: "hamstrings", level: 2 },
-  { key: "glutes_max", label: "Glute Max", parent: "glutes", level: 2 },
-  { key: "glutes_med", label: "Glute Medius / Minimus", parent: "glutes", level: 2 },
-  { key: "calves_gastroc", label: "Gastrocnemius", parent: "calves", level: 2 },
-  { key: "calves_soleus", label: "Soleus", parent: "calves", level: 2 },
-  { key: "abs_upper", label: "Upper Abs", parent: "abs", level: 2 },
-  { key: "abs_lower", label: "Lower Abs", parent: "abs", level: 2 },
-  { key: "traps_upper", label: "Upper Traps", parent: "traps", level: 2 },
-  { key: "traps_mid_lower", label: "Mid / Lower Traps", parent: "traps", level: 2 },
-  { key: "forearms_flexors", label: "Forearm Flexors", parent: "forearms", level: 2 },
-  { key: "forearms_extensors", label: "Forearm Extensors", parent: "forearms", level: 2 },
-];
+// Maps every muscle key from the old "Primary + Secondary" system (both the
+// 13 main groups and every Advanced/Anatomical sub-muscle) onto the new
+// { muscle, area } shape, so existing exercises migrate automatically the
+// first time they're read — nothing gets dropped or reset to "Other"
+// unnecessarily. A sub-muscle with no clean equivalent still maps to its
+// correct muscle, just without a pre-picked target area.
+const LEGACY_SUBMUSCLE_MIGRATION = {
+  lats: { muscle: "back", area: "lats" },
+  rhomboids: { muscle: "back", area: "mid_back" },
+  erectors: { muscle: "back", area: "lower_back" },
+  teres_major: { muscle: "back", area: "mid_back" },
+  brachialis: { muscle: "biceps", area: "brachialis" },
+  brachioradialis: { muscle: "forearms", area: "brachioradialis" },
+  adductors: { muscle: "glutes", area: null },
+  abductors: { muscle: "glutes", area: "glute_med_min" },
+  obliques: { muscle: "abs", area: "obliques" },
+  hip_flexors: { muscle: "quads", area: null },
+  chest_upper: { muscle: "chest", area: "chest_upper" },
+  chest_lower: { muscle: "chest", area: "chest_lower" },
+  triceps_long: { muscle: "triceps", area: "triceps_long" },
+  triceps_lateral: { muscle: "triceps", area: "triceps_lateral" },
+  triceps_medial: { muscle: "triceps", area: "triceps_medial" },
+  biceps_long: { muscle: "biceps", area: "biceps_long" },
+  biceps_short: { muscle: "biceps", area: "biceps_short" },
+  delts_front: { muscle: "shoulders", area: "front_delts" },
+  delts_side: { muscle: "shoulders", area: "lateral_delts" },
+  delts_rear: { muscle: "shoulders", area: "rear_delts" },
+  quads_rectus_femoris: { muscle: "quads", area: "rectus_femoris" },
+  quads_vastus_lateralis: { muscle: "quads", area: "vastus_lateralis" },
+  quads_vastus_medialis: { muscle: "quads", area: "vastus_medialis" },
+  hamstrings_biceps_femoris: { muscle: "hamstrings", area: "biceps_femoris" },
+  hamstrings_medial: { muscle: "hamstrings", area: "semitendinosus" },
+  glutes_max: { muscle: "glutes", area: "glute_max" },
+  glutes_med: { muscle: "glutes", area: "glute_med_min" },
+  calves_gastroc: { muscle: "calves", area: "gastrocnemius" },
+  calves_soleus: { muscle: "calves", area: "soleus" },
+  abs_upper: { muscle: "abs", area: "abs_upper" },
+  abs_lower: { muscle: "abs", area: "abs_lower" },
+  traps_upper: { muscle: "traps", area: "traps_upper" },
+  traps_mid_lower: { muscle: "traps", area: "traps_mid_lower" },
+  forearms_flexors: { muscle: "forearms", area: "forearm_flexors" },
+  forearms_extensors: { muscle: "forearms", area: "forearm_extensors" },
+};
 
-// Full taxonomy = the 13 main groups (level 0, parent null) + every
-// sub-muscle above. MUSCLE_BY_KEY is the lookup every helper below uses.
-const MUSCLE_TAXONOMY = [
-  ...MUSCLE_GROUPS.map((m) => ({ ...m, parent: null, level: 0 })),
-  ...MUSCLE_SUBGROUPS,
-];
-const MUSCLE_BY_KEY = new Map(MUSCLE_TAXONOMY.map((m) => [m.key, m]));
+function legacyKeyToMuscleArea(key) {
+  if (!key) return { muscle: "other", area: null };
+  if (MUSCLE_BY_KEY.has(key)) return { muscle: key, area: null };
+  if (LEGACY_SUBMUSCLE_MIGRATION[key]) return LEGACY_SUBMUSCLE_MIGRATION[key];
+  return { muscle: "other", area: null };
+}
 
-// The 3 user-selectable detail levels. "rank" is what the rest of the
-// volume system compares against — a plain 0/1/2 matching each muscle's
-// own "level" field above.
+// The 3 user-selectable detail levels for the Volume by Muscle Group
+// display. Standard shows only muscle-level totals. Advanced lets you tap
+// a muscle to expand/collapse its target-area breakdown. Anatomical shows
+// every muscle's target-area breakdown expanded automatically.
 const MUSCLE_DETAIL_LEVELS = [
   { key: "standard", label: "Standard", rank: 0 },
   { key: "advanced", label: "Advanced", rank: 1 },
@@ -1057,63 +1123,52 @@ function muscleDetailRank(levelKey) {
   return MUSCLE_DETAIL_LEVELS.find((l) => l.key === levelKey)?.rank ?? 0;
 }
 
-function muscleGroupLabel(key) {
+function muscleLabel(key) {
   return MUSCLE_BY_KEY.get(key)?.label || "Other";
 }
 
-// A muscle's own key, then each parent up to its main group — e.g.
-// "triceps_long" -> ["triceps_long", "triceps"]. A main group's chain is
-// just itself. Anything unrecognized falls back to "other".
-function muscleAncestorChain(key) {
-  const chain = [];
-  let node = MUSCLE_BY_KEY.get(key) || MUSCLE_BY_KEY.get("other");
-  while (node) {
-    chain.push(node.key);
-    node = node.parent ? MUSCLE_BY_KEY.get(node.parent) : null;
-  }
-  return chain;
+function targetAreaOptions(muscleKey) {
+  return TARGET_AREAS_BY_MUSCLE[muscleKey] || [];
 }
 
-// Rolls a (possibly very specific) muscle key up to the given detail
-// level's granularity — e.g. "triceps_long" at rank 0 becomes "triceps".
-// A muscle already coarser than the requested rank is returned unchanged,
-// so switching detail levels never invents detail that was never tagged,
-// and never discards a tag that's already coarser than the new level.
-function muscleAtLevel(key, levelRank) {
-  const chain = muscleAncestorChain(key);
-  for (const k of chain) {
-    const node = MUSCLE_BY_KEY.get(k);
-    if (node && node.level <= levelRank) return k;
-  }
-  return "other";
+function areaPresetLabel(muscleKey, areaKey) {
+  const found = targetAreaOptions(muscleKey).find((a) => a.key === areaKey);
+  return found ? found.label : null;
 }
 
-// Every taxonomy key that rolls up to rootKey — rootKey itself plus every
-// descendant at any level — used to fold a main group's sub-muscle volume
-// back together when rendering a breakdown.
-function muscleDescendantKeys(rootKey) {
-  return MUSCLE_TAXONOMY.filter((m) => muscleAncestorChain(m.key).includes(rootKey)).map((m) => m.key);
+// Cleans up a `muscles` array (from storage, or from the muscle editor) into
+// a well-formed shape: every entry has a valid muscle key and an array of
+// { key, label, custom } target areas. Always returns at least one entry.
+function sanitizeMuscleEntries(list) {
+  const cleaned = (Array.isArray(list) ? list : [])
+    .filter((m) => m && m.muscle)
+    .map((m) => ({
+      muscle: MUSCLE_BY_KEY.has(m.muscle) ? m.muscle : "other",
+      areas: Array.isArray(m.areas)
+        ? m.areas
+            .filter((a) => a && a.key)
+            .map((a) => ({ key: a.key, label: a.label || areaPresetLabel(m.muscle, a.key) || a.key, custom: !!a.custom }))
+        : [],
+    }));
+  return cleaned.length ? cleaned : [{ muscle: "other", areas: [] }];
 }
 
-// Builds <option>/<optgroup> markup for a muscle picker, limited to what's
-// selectable at the given detail level. At rank 0 (Standard) this is just
-// the flat 13-item list, unchanged from before. At rank 1+ it groups each
-// main group's available sub-muscles underneath it via <optgroup>, so the
-// dropdown stays organized instead of dumping 30+ flat options on the user.
-// includeNone adds a leading "None" option, for the optional secondary-
-// muscle picker.
-function muscleOptionsHtml(selectedKey, levelRank, includeNone) {
-  const none = includeNone ? `<option value="">None</option>` : "";
-  if (levelRank <= 0) {
-    return none + MUSCLE_GROUPS.map((m) => `<option value="${m.key}" ${m.key === selectedKey ? "selected" : ""}>${escapeHtml(m.label)}</option>`).join("");
-  }
-  return none + MUSCLE_GROUPS.map((main) => {
-    const subs = MUSCLE_SUBGROUPS.filter((s) => s.level <= levelRank && muscleAncestorChain(s.key).includes(main.key));
-    const mainOption = `<option value="${main.key}" ${main.key === selectedKey ? "selected" : ""}>${escapeHtml(main.label)}</option>`;
-    if (!subs.length) return mainOption;
-    const subOptions = subs.map((s) => `<option value="${s.key}" ${s.key === selectedKey ? "selected" : ""}>${escapeHtml("  " + s.label)}</option>`).join("");
-    return `<optgroup label="${escapeHtml(main.label)}">${mainOption}${subOptions}</optgroup>`;
-  }).join("");
+// Normalizes any exercise-like object into the current `muscles` array
+// shape, migrating the old `muscleGroup` / `secondaryMuscle` fields the
+// first time an exercise tagged under the old system is read. Nothing is
+// deleted: a primary + secondary pairing becomes a primary + additional
+// muscle pairing, preserving the same relative volume weighting.
+function normalizeExerciseMuscles(c) {
+  if (Array.isArray(c.muscles) && c.muscles.length) return sanitizeMuscleEntries(c.muscles);
+  const entries = [];
+  const pushLegacy = (key) => {
+    const resolved = legacyKeyToMuscleArea(key);
+    const areas = resolved.area ? [{ key: resolved.area, label: areaPresetLabel(resolved.muscle, resolved.area) || resolved.area, custom: false }] : [];
+    entries.push({ muscle: resolved.muscle, areas });
+  };
+  pushLegacy(c.muscleGroup || "other");
+  if (c.secondaryMuscle) pushLegacy(c.secondaryMuscle);
+  return entries.length ? entries : [{ muscle: "other", areas: [] }];
 }
 
 let PROGRAM = {};
@@ -1135,7 +1190,7 @@ function rebuildProgram(customList, overrides, order) {
   for (const dt of PROGRAM_DAY_TYPES) {
     const custom = list
       .filter((c) => c.type === dt.key)
-      .map((c) => ({ id: c.id, name: c.name, sets: c.sets, unilateral: !!c.unilateral, muscleGroup: c.muscleGroup || "other", secondaryMuscle: c.secondaryMuscle || null, custom: true }));
+      .map((c) => ({ id: c.id, name: c.name, sets: c.sets, unilateral: !!c.unilateral, muscles: normalizeExerciseMuscles(c), custom: true }));
     const withOverrides = custom
       .filter((e) => !ov[e.id]?.removed)
       .map((e) => {
@@ -1145,8 +1200,7 @@ function rebuildProgram(customList, overrides, order) {
           ...e,
           ...(typeof o.sets === "number" ? { sets: o.sets } : {}),
           ...(typeof o.unilateral === "boolean" ? { unilateral: o.unilateral } : {}),
-          ...(typeof o.muscleGroup === "string" ? { muscleGroup: o.muscleGroup } : {}),
-          ...(Object.prototype.hasOwnProperty.call(o, "secondaryMuscle") ? { secondaryMuscle: o.secondaryMuscle } : {}),
+          ...(Array.isArray(o.muscles) ? { muscles: sanitizeMuscleEntries(o.muscles) } : {}),
         };
       });
 
@@ -1196,66 +1250,142 @@ function programVolumeSets(type) {
   return PROGRAM[type] ? PROGRAM[type].exercises.reduce((sum, e) => sum + exerciseVolumeSets(e), 0) : 0;
 }
 
-// Weight applied to an exercise's secondary muscle, relative to its primary
-// (which always counts as 1.0×). Reflects that a secondary mover is worked,
-// but less directly than the primary target, so it doesn't add a full extra
-// set of volume for that muscle.
+// Weight applied to an exercise's additional (non-primary) muscles, relative
+// to its primary muscle (which always counts as 1.0×). Reflects that an
+// additional mover is worked, but less directly than the primary target, so
+// it doesn't add a full extra set of volume for that muscle.
 const SECONDARY_MUSCLE_VOLUME_WEIGHT = 0.5;
 
-// Per-muscle volume for a workout day type: { muscleKey: volumeSets }.
-// Uses the same unilateral doubling as programVolumeSets, so a muscle
-// trained by a unilateral exercise gets credit for both sides' sets.
-// levelRank (0/1/2, see MUSCLE_DETAIL_LEVELS) controls how finely results
-// are bucketed — every exercise's tagged muscle(s) are rolled up to that
-// granularity, so this always returns sensible totals regardless of how
-// specifically (or not) individual exercises have been tagged.
-function programMuscleVolume(type, levelRank = 0) {
-  const totals = {};
-  if (!PROGRAM[type]) return totals;
+// A normalized `muscles` array for any exercise-like object, always at
+// least one entry. Falls back gracefully for anything unexpected.
+function exerciseMuscles(e) {
+  return Array.isArray(e && e.muscles) && e.muscles.length ? e.muscles : [{ muscle: "other", areas: [] }];
+}
+
+// Per-muscle AND per-target-area volume for a workout day type. Returns
+// { muscleTotals: {muscleKey: volumeSets}, areaTotals: {"muscle::area":
+// {muscle,label,value}} }. Uses the same unilateral doubling as
+// programVolumeSets. A muscle entry's volume is weighted by its position
+// (1.0× primary, 0.5× each additional muscle) and then split evenly across
+// however many target areas are selected for it — so a muscle's total
+// always equals the sum of its own area totals, and an exercise tagged with
+// just a muscle (no specific area) still counts fully toward that muscle.
+function programMuscleVolume(type) {
+  const muscleTotals = {};
+  const areaTotals = {};
+  if (!PROGRAM[type]) return { muscleTotals, areaTotals };
   for (const e of PROGRAM[type].exercises) {
     const vol = exerciseVolumeSets(e);
-    const primaryKey = muscleAtLevel(e.muscleGroup || "other", levelRank);
-    totals[primaryKey] = (totals[primaryKey] || 0) + vol;
-    if (e.secondaryMuscle) {
-      const secondaryKey = muscleAtLevel(e.secondaryMuscle, levelRank);
-      totals[secondaryKey] = (totals[secondaryKey] || 0) + vol * SECONDARY_MUSCLE_VOLUME_WEIGHT;
-    }
+    exerciseMuscles(e).forEach((m, idx) => {
+      const weight = idx === 0 ? 1 : SECONDARY_MUSCLE_VOLUME_WEIGHT;
+      const muscleVol = vol * weight;
+      muscleTotals[m.muscle] = (muscleTotals[m.muscle] || 0) + muscleVol;
+      const areas = m.areas || [];
+      if (areas.length) {
+        const perArea = muscleVol / areas.length;
+        for (const a of areas) {
+          const k = `${m.muscle}::${a.key}`;
+          if (!areaTotals[k]) areaTotals[k] = { muscle: m.muscle, label: a.label, value: 0 };
+          areaTotals[k].value += perArea;
+        }
+      }
+    });
   }
-  return totals;
+  return { muscleTotals, areaTotals };
 }
 
 // Same breakdown, aggregated across every day type in the current program —
 // e.g. "how much volume does chest get across my whole split".
-function programMuscleVolumeAll(levelRank = 0) {
-  const totals = {};
+function programMuscleVolumeAll() {
+  const muscleTotals = {};
+  const areaTotals = {};
   for (const dt of PROGRAM_DAY_TYPES) {
-    const dayTotals = programMuscleVolume(dt.key, levelRank);
-    for (const [key, val] of Object.entries(dayTotals)) {
-      totals[key] = (totals[key] || 0) + val;
+    const day = programMuscleVolume(dt.key);
+    for (const [key, val] of Object.entries(day.muscleTotals)) {
+      muscleTotals[key] = (muscleTotals[key] || 0) + val;
+    }
+    for (const [key, val] of Object.entries(day.areaTotals)) {
+      if (!areaTotals[key]) areaTotals[key] = { muscle: val.muscle, label: val.label, value: 0 };
+      areaTotals[key].value += val.value;
     }
   }
-  return totals;
+  return { muscleTotals, areaTotals };
 }
 
-// Renders a muscle-volume breakdown. At Standard (levelRank 0) this is the
-// same flat "Label: value" list as before. At Advanced/Anatomical, each
-// main group's line rolls up all of its sub-muscle volume into one total,
-// with the individual sub-muscle contributions shown alongside it — so the
-// dashboard stays anchored to the familiar main groups even when the
-// underlying data is more detailed.
-function muscleVolumeBreakdownHtml(totals, levelRank = 0) {
+// Transient UI state: which muscle rows are expanded in the Volume by
+// Muscle Group display at the Advanced detail level. Keyed by
+// "<contextKey>:<muscleKey>" so the per-day-type blocks and the
+// whole-program block can each expand independently. Resets on navigation,
+// which is fine — it's just a display preference, not user data.
+const expandedVolumeMuscles = new Set();
+
+// Renders a muscle-volume breakdown with expandable target-area detail.
+// Standard (levelRank 0): muscle totals only.
+// Advanced (levelRank 1): muscle totals, each with a ▸/▾ toggle to reveal
+// its target-area breakdown.
+// Anatomical (levelRank 2): muscle totals with target-area breakdown always
+// shown, no toggle needed.
+function muscleVolumeBreakdownHtml(totals, levelRank, contextKey) {
+  const { muscleTotals, areaTotals } = totals;
   const lines = MUSCLE_GROUPS.map((main) => {
-    const descKeys = muscleDescendantKeys(main.key);
-    const mainTotal = descKeys.reduce((sum, k) => sum + (totals[k] || 0), 0);
-    if (mainTotal <= 0) return null;
-    const subEntries = levelRank > 0
-      ? descKeys.filter((k) => k !== main.key && totals[k] > 0).map((k) => `${escapeHtml(muscleGroupLabel(k))}: ${roundTo(totals[k])}`)
-      : [];
-    const subHtml = subEntries.length ? ` <span class="text-faint">(${subEntries.join(" · ")})</span>` : "";
-    return `${escapeHtml(main.label)}: ${roundTo(mainTotal)}${subHtml}`;
+    const total = muscleTotals[main.key];
+    if (!total || total <= 0) return null;
+    const areaEntries = Object.values(areaTotals).filter((a) => a.muscle === main.key && a.value > 0);
+    const expandKey = `${contextKey}:${main.key}`;
+    const hasAreas = levelRank > 0 && areaEntries.length > 0;
+    const isExpanded = levelRank >= 2 || (levelRank === 1 && expandedVolumeMuscles.has(expandKey));
+    const toggle = hasAreas && levelRank === 1
+      ? `<button type="button" class="link-btn" data-act="toggle-vol-expand" data-key="${escapeHtml(expandKey)}" style="font-size:11px; padding:0 4px;">${isExpanded ? "▾" : "▸"}</button>`
+      : "";
+    const areaHtml = hasAreas && isExpanded
+      ? `<div style="margin:2px 0 6px 4px; padding-left:10px; border-left:1px solid var(--c-hairline); display:flex; flex-direction:column; gap:3px;">${areaEntries
+          .map((a) => `<span class="text-faint" style="font-size:12px;">${escapeHtml(a.label)} — ${roundTo(a.value)}</span>`)
+          .join("")}</div>`
+      : "";
+    return `<div style="padding:3px 0;"><div class="flex-between" style="align-items:center;"><span>${escapeHtml(main.label)} — ${roundTo(total)}</span>${toggle}</div>${areaHtml}</div>`;
   }).filter(Boolean);
   if (!lines.length) return "";
-  return `<p class="text-faint" style="margin:6px 0 0; font-size:12px;">${lines.join(" · ")}</p>`;
+  return `<div style="margin-top:4px; font-size:13px;">${lines.join("")}</div>`;
+}
+
+// Wires the ▸/▾ expand toggles rendered by muscleVolumeBreakdownHtml.
+// re-render is a no-arg callback that redraws whatever contains them.
+function wireVolumeExpandToggles(container, reRender) {
+  qsa('[data-act="toggle-vol-expand"]', container).forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.key;
+      if (expandedVolumeMuscles.has(key)) expandedVolumeMuscles.delete(key);
+      else expandedVolumeMuscles.add(key);
+      reRender();
+    });
+  });
+}
+
+// A compact one-line summary of what an exercise targets, e.g.
+// "Back (Lats, Upper Back) + Rear Delts" — used wherever an exercise is
+// listed (program overview, exercise list, exercise detail).
+function muscleSummaryText(e) {
+  return exerciseMuscles(e)
+    .map((m) => {
+      const label = muscleLabel(m.muscle);
+      const areas = (m.areas || []).map((a) => a.label);
+      return areas.length ? `${label} (${areas.join(", ")})` : label;
+    })
+    .join(" + ");
+}
+
+// A short label for the compact "Muscles" button shown on each program
+// exercise row and the Add Exercise form.
+function muscleChipText(e) {
+  const muscles = exerciseMuscles(e);
+  const primary = muscles[0];
+  const primaryLabel = muscleLabel(primary.muscle);
+  const areas = primary.areas || [];
+  let text = primaryLabel;
+  if (areas.length === 1) text += ` · ${areas[0].label}`;
+  else if (areas.length > 1) text += ` · ${areas[0].label} +${areas.length - 1}`;
+  if (muscles.length > 1) text += ` · +${muscles.length - 1} more`;
+  return text;
 }
 
 function allExerciseDefs() {
@@ -2069,6 +2199,143 @@ function confirmModal({ title, body, confirmLabel = "Confirm", cancelLabel = "Ca
 
 function closeAnyModal() {
   modalRoot.innerHTML = "";
+}
+
+// ---------------------------------------------------------------------------
+// Muscle targeting editor — lets the user pick a muscle, tick any number of
+// its target areas, add their own custom target area, and tag additional
+// muscles beyond the primary one. Resolves to the new `muscles` array, or
+// null if cancelled. Nothing here is hard-coded to a specific exercise —
+// the same editor is used for every Add/Edit flow.
+// ---------------------------------------------------------------------------
+function openMuscleEditorModal(initialMuscles) {
+  return new Promise((resolve) => {
+    let working = sanitizeMuscleEntries(initialMuscles).map((m) => ({ muscle: m.muscle, areas: m.areas.map((a) => ({ ...a })) }));
+    let addingAreaForIdx = null;
+
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    modalRoot.appendChild(overlay);
+
+    function firstUnusedMuscle() {
+      const used = new Set(working.map((m) => m.muscle));
+      const next = MUSCLE_GROUPS.find((m) => !used.has(m.key) && m.key !== "other");
+      return next ? next.key : "other";
+    }
+
+    function blockHtml(m, i) {
+      const presets = targetAreaOptions(m.muscle);
+      const presetKeys = new Set(presets.map((a) => a.key));
+      const customAreas = m.areas.filter((a) => a.custom || !presetKeys.has(a.key));
+      const isChecked = (key) => m.areas.some((a) => a.key === key);
+      const areaRows = [
+        ...presets.map((a) => ({ key: a.key, label: a.label, custom: false })),
+        ...customAreas,
+      ];
+      return `
+        <div class="muscle-block" style="${i > 0 ? "border-top:1px solid var(--c-hairline); margin-top:16px; padding-top:16px;" : ""}">
+          <div class="flex-between" style="align-items:center;">
+            <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--c-off-faint);">${i === 0 ? "Muscle" : "Additional Muscle"}</label>
+            ${working.length > 1 ? `<button type="button" class="link-btn" data-act="remove-muscle" data-idx="${i}" style="color:var(--c-crimson-bright); font-size:12px;">Remove</button>` : ""}
+          </div>
+          <select data-act="pick-muscle" data-idx="${i}" style="width:100%; margin-top:6px; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:10px; font-size:14px;">
+            ${MUSCLE_GROUPS.map((g) => `<option value="${g.key}" ${g.key === m.muscle ? "selected" : ""}>${escapeHtml(g.label)}</option>`).join("")}
+          </select>
+          ${areaRows.length || m.muscle !== "other" ? `
+            <div style="margin-top:12px;">
+              <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--c-off-faint);">Target Areas</label>
+              <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+                ${areaRows.map((a) => `
+                  <label style="display:flex; align-items:center; gap:9px; font-size:14px;">
+                    <input type="checkbox" data-act="toggle-area" data-idx="${i}" data-key="${escapeHtml(a.key)}" data-label="${escapeHtml(a.label)}" data-custom="${a.custom ? "true" : "false"}" ${isChecked(a.key) ? "checked" : ""}>
+                    ${escapeHtml(a.label)}
+                  </label>`).join("")}
+              </div>
+            </div>` : ""}
+          ${addingAreaForIdx === i
+            ? `<div style="display:flex; gap:6px; margin-top:10px;">
+                 <input type="text" id="new-area-input" placeholder="e.g. Rotator Cuff" style="flex:1; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:8px 10px; font-size:13px;">
+                 <button type="button" class="btn btn-primary" data-act="confirm-add-area" data-idx="${i}" style="padding:8px 14px; font-size:13px;">Add</button>
+               </div>`
+            : `<button type="button" class="link-btn" data-act="start-add-area" data-idx="${i}" style="margin-top:10px; font-size:12.5px;">+ Add Target Area</button>`}
+        </div>`;
+    }
+
+    function render() {
+      overlay.innerHTML = `
+        <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="muscle-modal-title">
+          <h3 id="muscle-modal-title">What does this exercise target?</h3>
+          <div id="muscle-blocks">${working.map(blockHtml).join("")}</div>
+          <button type="button" class="link-btn" data-act="add-muscle" style="margin-top:16px; font-size:13px;">+ Add Muscle</button>
+          <div class="btn-row" style="margin-top:20px;">
+            <button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button>
+            <button class="btn btn-primary" data-act="save" type="button">Save</button>
+          </div>
+        </div>`;
+      wire();
+      if (addingAreaForIdx !== null) qs("#new-area-input", overlay)?.focus();
+    }
+
+    function wire() {
+      qsa('[data-act="pick-muscle"]', overlay).forEach((sel) => {
+        sel.addEventListener("change", () => {
+          working[Number(sel.dataset.idx)] = { muscle: sel.value, areas: [] };
+          addingAreaForIdx = null;
+          render();
+        });
+      });
+      qsa('[data-act="toggle-area"]', overlay).forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const entry = working[Number(cb.dataset.idx)];
+          const key = cb.dataset.key;
+          if (cb.checked) {
+            if (!entry.areas.some((a) => a.key === key)) entry.areas.push({ key, label: cb.dataset.label, custom: cb.dataset.custom === "true" });
+          } else {
+            entry.areas = entry.areas.filter((a) => a.key !== key);
+          }
+        });
+      });
+      qsa('[data-act="start-add-area"]', overlay).forEach((btn) => {
+        btn.addEventListener("click", () => { addingAreaForIdx = Number(btn.dataset.idx); render(); });
+      });
+      qsa('[data-act="confirm-add-area"]', overlay).forEach((btn) => {
+        const idx = Number(btn.dataset.idx);
+        const commit = () => {
+          const input = qs("#new-area-input", overlay);
+          const label = (input?.value || "").trim();
+          addingAreaForIdx = null;
+          if (!label) { render(); return; }
+          const key = `custom-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${uid().slice(0, 5)}`;
+          working[idx].areas.push({ key, label, custom: true });
+          render();
+        };
+        btn.addEventListener("click", commit);
+        qs("#new-area-input", overlay)?.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); commit(); } });
+      });
+      qsa('[data-act="remove-muscle"]', overlay).forEach((btn) => {
+        btn.addEventListener("click", () => {
+          working.splice(Number(btn.dataset.idx), 1);
+          addingAreaForIdx = null;
+          render();
+        });
+      });
+      qs('[data-act="add-muscle"]', overlay).addEventListener("click", () => {
+        working.push({ muscle: firstUnusedMuscle(), areas: [] });
+        addingAreaForIdx = null;
+        render();
+      });
+      overlay.querySelector('[data-act="cancel"]').addEventListener("click", () => close(null));
+      overlay.querySelector('[data-act="save"]').addEventListener("click", () => close(sanitizeMuscleEntries(working)));
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
+    }
+
+    function close(result) {
+      overlay.remove();
+      resolve(result);
+    }
+
+    render();
+  });
 }
 
 // Lets the user override a single date's day type (or clear an existing
@@ -3596,7 +3863,7 @@ async function exercisesRenderList(container, navigate, query = "") {
           <div class="history-item" data-id="${d.id}" style="cursor:pointer;">
             <div class="h-body">
               <div class="h-title">${escapeHtml(d.name)} ${d.unilateral ? `<span class="badge badge-uni">Unilateral</span>` : ""}</div>
-              <div class="h-meta">${muscleGroupLabel(d.muscleGroup)}${d.secondaryMuscle ? ` + ${muscleGroupLabel(d.secondaryMuscle)}` : ""} · ${d.sets} programmed set${d.sets > 1 ? "s" : ""}${lastPerformed[d.id] ? ` · last ${formatDateShort(lastPerformed[d.id])}` : ""}</div>
+              <div class="h-meta">${escapeHtml(muscleSummaryText(d))} · ${d.sets} programmed set${d.sets > 1 ? "s" : ""}${lastPerformed[d.id] ? ` · last ${formatDateShort(lastPerformed[d.id])}` : ""}</div>
             </div>
             <div class="h-chevron">›</div>
           </div>`).join("")}
@@ -3646,7 +3913,7 @@ async function exercisesRenderDetail(container, navigate, params) {
     <button class="link-btn" data-act="back">‹ Exercises</button>
     <h1 style="font-size:22px; margin-top:10px;">${escapeHtml(def.name)}</h1>
     <div class="ex-sub" style="margin-top:6px; display:flex; gap:8px; align-items:center;">
-      <span class="text-faint">${def.sets} programmed sets · ${muscleGroupLabel(def.muscleGroup)}${def.secondaryMuscle ? ` + ${muscleGroupLabel(def.secondaryMuscle)}` : ""}</span>
+      <span class="text-faint">${def.sets} programmed sets · ${escapeHtml(muscleSummaryText(def))}</span>
       ${def.unilateral ? `<span class="badge badge-uni">Unilateral</span>` : ""}
     </div>
 
@@ -4560,9 +4827,7 @@ async function doReset(container, navigate) {
   settingsRender(container, navigate);
 }
 
-function renderProgramExRow(e, type, isFirst, isLast, levelRank = 0) {
-  const muscleKey = e.muscleGroup || "other";
-  const secondaryKey = e.secondaryMuscle || "";
+function renderProgramExRow(e, type, isFirst, isLast) {
   return `
     <div class="flex-between" style="padding:8px 0; border-top:1px solid var(--c-hairline); gap:8px; flex-wrap:wrap;">
       <span style="display:flex; align-items:center; gap:6px;">
@@ -4577,12 +4842,7 @@ function renderProgramExRow(e, type, isFirst, isLast, levelRank = 0) {
         <span class="numeric text-dim" style="min-width:30px; text-align:center;">${e.sets}×</span>
         <button class="link-btn" data-act="inc-sets" data-id="${e.id}" style="font-size:16px; padding:2px 9px; border:1px solid var(--c-hairline-strong); border-radius:6px;">+</button>
         <button class="link-btn" data-act="toggle-uni" data-id="${e.id}" data-current="${!!e.unilateral}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px; margin-left:4px;">${e.unilateral ? "Uni" : "Bi"}</button>
-        <select data-act="set-muscle" data-id="${e.id}" title="Primary muscle" style="font-size:11px; padding:3px 6px; border:1px solid var(--c-hairline-strong); border-radius:6px; background:var(--c-panel); color:var(--c-off);">
-          ${muscleOptionsHtml(muscleKey, levelRank, false)}
-        </select>
-        <select data-act="set-secondary-muscle" data-id="${e.id}" title="Secondary muscle (optional)" style="font-size:11px; padding:3px 6px; border:1px solid var(--c-hairline-strong); border-radius:6px; background:var(--c-panel); color:var(--c-off);">
-          ${muscleOptionsHtml(secondaryKey, levelRank, true)}
-        </select>
+        <button class="link-btn" data-act="edit-muscles" data-id="${e.id}" title="${escapeHtml(muscleSummaryText(e))}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;">${escapeHtml(muscleChipText(e))}</button>
         <button class="link-btn" data-act="remove-ex" data-id="${e.id}" style="color:var(--c-crimson-bright); font-size:12px; margin-left:6px;">Remove</button>
       </span>
     </div>`;
@@ -4654,7 +4914,8 @@ async function renderProgramOverview(container, navigate) {
   const settings = await storage.getSettings();
   const detailLevel = settings.muscleDetailLevel || "standard";
   const levelRank = muscleDetailRank(detailLevel);
-  const wholeProgramMuscle = programMuscleVolumeAll(levelRank);
+  const wholeProgramMuscle = programMuscleVolumeAll();
+  let newExerciseMuscles = [{ muscle: "chest", areas: [] }];
 
   container.innerHTML = `
     <button class="link-btn" data-act="back">‹ Settings</button>
@@ -4666,7 +4927,7 @@ async function renderProgramOverview(container, navigate) {
         <div class="toggle-row" id="muscle-detail-toggle">
           ${MUSCLE_DETAIL_LEVELS.map((l) => `<button type="button" data-value="${l.key}" class="${l.key === detailLevel ? "active" : ""}">${escapeHtml(l.label)}</button>`).join("")}
         </div>
-        <p class="text-faint" style="margin:10px 0 0; font-size:12.5px;">Standard shows just the main muscle groups. Advanced adds useful sub-muscles (brachialis, adductors, erectors…). Anatomical breaks things down to individual heads/regions (triceps heads, quad regions…). This only changes how much detail is shown — it never affects your workout history.</p>
+        <p class="text-faint" style="margin:10px 0 0; font-size:12.5px;">Standard shows just totals per muscle. Advanced lets you tap a muscle to expand and see its target areas. Anatomical always shows the full target-area breakdown. This only changes how much detail is shown — it never affects your workout history.</p>
       </div>
     </div>
 
@@ -4675,18 +4936,18 @@ async function renderProgramOverview(container, navigate) {
       return `
         <div class="section-title"><h2>${escapeHtml(def.label)} — ${programVolumeSets(dt.key)} volume sets</h2></div>
         <div class="card">
-          ${def.exercises.length ? def.exercises.map((e, i) => renderProgramExRow(e, dt.key, i === 0, i === def.exercises.length - 1, levelRank)).join("") : `<p class="text-faint" style="margin:0;">No exercises in ${escapeHtml(def.label)} yet.</p>`}
-          ${muscleVolumeBreakdownHtml(programMuscleVolume(dt.key, levelRank), levelRank)}
+          ${def.exercises.length ? def.exercises.map((e, i) => renderProgramExRow(e, dt.key, i === 0, i === def.exercises.length - 1)).join("") : `<p class="text-faint" style="margin:0;">No exercises in ${escapeHtml(def.label)} yet.</p>`}
+          ${muscleVolumeBreakdownHtml(programMuscleVolume(dt.key), levelRank, `day:${dt.key}`)}
         </div>`;
     }).join("")}
-    <p class="text-faint" style="margin-bottom:22px;">Use −/+ to change sets, Bi/Uni to switch between bilateral and unilateral, the muscle dropdowns to tag what an exercise trains (primary, and optionally a secondary muscle it also works), or Remove to drop an exercise from future workouts. Unilateral exercises count double toward volume, since both sides perform the programmed sets. A secondary muscle counts at half weight, since it's worked less directly than the primary target. Historical workouts always keep what was actually performed, whatever you change here.</p>
+    <p class="text-faint" style="margin-bottom:22px;">Use −/+ to change sets, Bi/Uni to switch between bilateral and unilateral, the Muscles button to tag what an exercise trains, or Remove to drop an exercise from future workouts. Unilateral exercises count double toward volume, since both sides perform the programmed sets. An additional (non-primary) muscle counts at half weight, since it's worked less directly than the primary target. Historical workouts always keep what was actually performed, whatever you change here.</p>
 
     <div class="section-title"><h2>Volume by Muscle Group</h2></div>
     <div class="card">
-      ${Object.values(wholeProgramMuscle).some((v) => v > 0)
-        ? muscleVolumeBreakdownHtml(wholeProgramMuscle, levelRank)
-        : `<p class="text-faint" style="margin:0;">Tag your exercises with a muscle group below to see volume per muscle across your whole program.</p>`}
-      <p class="text-faint" style="margin:8px 0 0; font-size:12px;">Totals across one pass through your whole split (all day types, once each). Unilateral exercises count double; secondary muscles count at half weight.</p>
+      ${Object.values(wholeProgramMuscle.muscleTotals).some((v) => v > 0)
+        ? muscleVolumeBreakdownHtml(wholeProgramMuscle, levelRank, "all")
+        : `<p class="text-faint" style="margin:0;">Tag your exercises with a muscle below to see volume per muscle across your whole program.</p>`}
+      <p class="text-faint" style="margin:8px 0 0; font-size:12px;">Totals across one pass through your whole split (all day types, once each). Unilateral exercises count double; additional muscles count at half weight, split evenly across their selected target areas.</p>
     </div>
 
     <div class="section-title"><h2>Add Exercise</h2></div>
@@ -4708,23 +4969,15 @@ async function renderProgramOverview(container, navigate) {
           <button type="button" data-value="unilateral">Unilateral</button>
         </div>
       </div>
-      <div class="field">
-        <label for="custom-ex-muscle">Primary muscle</label>
-        <select id="custom-ex-muscle">
-          ${muscleOptionsHtml(null, levelRank, false)}
-        </select>
-      </div>
-      <div class="field">
-        <label for="custom-ex-secondary-muscle">Secondary muscle (optional)</label>
-        <select id="custom-ex-secondary-muscle">
-          ${muscleOptionsHtml(null, levelRank, true)}
-        </select>
-      </div>
       <div class="field" style="margin-bottom:0;">
+        <label>Muscles Targeted</label>
+        <button type="button" class="btn" id="custom-ex-muscle-btn" style="width:100%; text-align:left;"></button>
+      </div>
+      <div class="field">
         <label for="custom-ex-sets">Planned sets</label>
         <input type="number" id="custom-ex-sets" value="2" min="1" max="10">
       </div>
-      <button class="btn btn-primary" id="custom-ex-add" style="margin-top:14px;">Add Exercise</button>
+      <button class="btn btn-primary" id="custom-ex-add" style="margin-top:4px;">Add Exercise</button>
     </div>
 
     <div class="section-title"><h2>Paste Whole Program</h2></div>
@@ -4750,6 +5003,8 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
     await storage.saveSettings({ muscleDetailLevel: value });
     renderProgramOverview(container, navigate);
   });
+
+  wireVolumeExpandToggles(container, () => renderProgramOverview(container, navigate));
 
   qsa('[data-act="move-up"], [data-act="move-down"]', container).forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -4791,19 +5046,14 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
     });
   });
 
-  qsa('[data-act="set-muscle"]', container).forEach((sel) => {
-    sel.addEventListener("change", async () => {
-      const id = sel.dataset.id;
-      await storage.updateCustomExercise(id, { muscleGroup: sel.value });
-      applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
-      renderProgramOverview(container, navigate);
-    });
-  });
-
-  qsa('[data-act="set-secondary-muscle"]', container).forEach((sel) => {
-    sel.addEventListener("change", async () => {
-      const id = sel.dataset.id;
-      await storage.updateCustomExercise(id, { secondaryMuscle: sel.value || null });
+  qsa('[data-act="edit-muscles"]', container).forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      const def = findExerciseDef(id);
+      if (!def) return;
+      const result = await openMuscleEditorModal(exerciseMuscles(def));
+      if (!result) return;
+      await storage.updateCustomExercise(id, { muscles: result });
       applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
       renderProgramOverview(container, navigate);
     });
@@ -4846,6 +5096,19 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
     });
   });
 
+  const muscleBtn = qs("#custom-ex-muscle-btn", container);
+  function updateMusclePreview() {
+    muscleBtn.textContent = muscleChipText({ muscles: newExerciseMuscles });
+  }
+  updateMusclePreview();
+  muscleBtn.addEventListener("click", async () => {
+    const result = await openMuscleEditorModal(newExerciseMuscles);
+    if (result) {
+      newExerciseMuscles = result;
+      updateMusclePreview();
+    }
+  });
+
   qs("#custom-ex-add", container).addEventListener("click", async () => {
     const nameInput = qs("#custom-ex-name", container);
     const setsInput = qs("#custom-ex-sets", container);
@@ -4859,10 +5122,8 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
 
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     const id = `custom-${slug || "exercise"}-${uid().slice(0, 6)}`;
-    const muscleGroup = qs("#custom-ex-muscle", container).value;
-    const secondaryMuscle = qs("#custom-ex-secondary-muscle", container).value || null;
 
-    await storage.addCustomExercise({ id, name, type: selectedType, sets, unilateral: selectedUni, muscleGroup, secondaryMuscle, createdAt: nowISO() });
+    await storage.addCustomExercise({ id, name, type: selectedType, sets, unilateral: selectedUni, muscles: newExerciseMuscles, createdAt: nowISO() });
     applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
     toast(`${name} added to ${PROGRAM[selectedType]?.label || selectedType}`);
     renderProgramOverview(container, navigate);

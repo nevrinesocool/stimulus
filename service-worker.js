@@ -13,7 +13,7 @@
 // users' workout history keeps loading after the rebrand.
 // ============================================================================
 
-const CACHE_VERSION = "v8";
+const CACHE_VERSION = "v9";
 const CACHE_NAME = `stimulus-shell-${CACHE_VERSION}`;
 
 // Paths are relative to this file's own location so the app works correctly
