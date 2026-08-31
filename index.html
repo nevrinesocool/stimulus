@@ -1003,11 +1003,23 @@ const TARGET_AREAS_BY_MUSCLE = {
     { key: "chest_mid", label: "Mid Chest" },
     { key: "chest_lower", label: "Lower Chest" },
   ],
+  // Back is organized into 3 sub-regions (Lats, Upper Back, Erectors), each
+  // with its own specific areas — the `group` field is purely a display
+  // grouping for the target-area checklist; volume tracking still treats
+  // every area as its own independent target, same as any other muscle.
   back: [
-    { key: "lats", label: "Lats" },
-    { key: "upper_back", label: "Upper Back" },
-    { key: "mid_back", label: "Mid Back" },
-    { key: "lower_back", label: "Lower Back" },
+    { key: "lats_upper", label: "Upper Lat", group: "Lats" },
+    { key: "lats_lower", label: "Lower Lat", group: "Lats" },
+    { key: "traps_upper", label: "Upper Traps", group: "Upper Back" },
+    { key: "traps_mid", label: "Mid Traps", group: "Upper Back" },
+    { key: "traps_lower", label: "Lower Traps", group: "Upper Back" },
+    { key: "rhomboids", label: "Rhomboids", group: "Upper Back" },
+    { key: "teres_major", label: "Teres Major", group: "Upper Back" },
+    { key: "teres_minor", label: "Teres Minor", group: "Upper Back" },
+    { key: "infraspinatus", label: "Infraspinatus", group: "Upper Back" },
+    { key: "erectors_upper", label: "Upper Erectors", group: "Erectors" },
+    { key: "erectors_mid", label: "Mid Erectors", group: "Erectors" },
+    { key: "erectors_lower", label: "Lower Erectors", group: "Erectors" },
   ],
   shoulders: [
     { key: "front_delts", label: "Front Delts" },
@@ -1066,10 +1078,10 @@ const TARGET_AREAS_BY_MUSCLE = {
 // unnecessarily. A sub-muscle with no clean equivalent still maps to its
 // correct muscle, just without a pre-picked target area.
 const LEGACY_SUBMUSCLE_MIGRATION = {
-  lats: { muscle: "back", area: "lats" },
-  rhomboids: { muscle: "back", area: "mid_back" },
-  erectors: { muscle: "back", area: "lower_back" },
-  teres_major: { muscle: "back", area: "mid_back" },
+  lats: { muscle: "back", area: null },
+  rhomboids: { muscle: "back", area: "rhomboids" },
+  erectors: { muscle: "back", area: null },
+  teres_major: { muscle: "back", area: "teres_major" },
   brachialis: { muscle: "biceps", area: "brachialis" },
   brachioradialis: { muscle: "forearms", area: "brachioradialis" },
   adductors: { muscle: "glutes", area: null },
@@ -2229,9 +2241,30 @@ function openMuscleEditorModal(initialMuscles) {
       const customAreas = m.areas.filter((a) => a.custom || !presetKeys.has(a.key));
       const isChecked = (key) => m.areas.some((a) => a.key === key);
       const areaRows = [
-        ...presets.map((a) => ({ key: a.key, label: a.label, custom: false })),
-        ...customAreas,
+        ...presets.map((a) => ({ key: a.key, label: a.label, custom: false, group: a.group || null })),
+        ...customAreas.map((a) => ({ ...a, group: null })),
       ];
+      // Groups areas under a small header when the muscle's taxonomy defines
+      // one (e.g. Back's Lats / Upper Back / Erectors) — purely a display
+      // aid for scanning a longer list; every area still counts toward
+      // volume independently, grouped or not.
+      const groups = [];
+      const groupIndex = new Map();
+      for (const a of areaRows) {
+        const g = a.group;
+        if (!groupIndex.has(g)) { groupIndex.set(g, []); groups.push(g); }
+        groupIndex.get(g).push(a);
+      }
+      const checkboxHtml = (a) => `
+        <label style="display:flex; align-items:center; gap:9px; font-size:14px;">
+          <input type="checkbox" data-act="toggle-area" data-idx="${i}" data-key="${escapeHtml(a.key)}" data-label="${escapeHtml(a.label)}" data-custom="${a.custom ? "true" : "false"}" ${isChecked(a.key) ? "checked" : ""}>
+          ${escapeHtml(a.label)}
+        </label>`;
+      const areaListHtml = groups.map((g, gi) => `
+        ${g ? `<div class="text-faint" style="font-size:10.5px; text-transform:uppercase; letter-spacing:0.05em; margin:${gi === 0 ? "0" : "10px"} 0 2px;">${escapeHtml(g)}</div>` : ""}
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          ${groupIndex.get(g).map(checkboxHtml).join("")}
+        </div>`).join("");
       return `
         <div class="muscle-block" style="${i > 0 ? "border-top:1px solid var(--c-hairline); margin-top:16px; padding-top:16px;" : ""}">
           <div class="flex-between" style="align-items:center;">
@@ -2244,13 +2277,7 @@ function openMuscleEditorModal(initialMuscles) {
           ${areaRows.length || m.muscle !== "other" ? `
             <div style="margin-top:12px;">
               <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--c-off-faint);">Target Areas</label>
-              <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
-                ${areaRows.map((a) => `
-                  <label style="display:flex; align-items:center; gap:9px; font-size:14px;">
-                    <input type="checkbox" data-act="toggle-area" data-idx="${i}" data-key="${escapeHtml(a.key)}" data-label="${escapeHtml(a.label)}" data-custom="${a.custom ? "true" : "false"}" ${isChecked(a.key) ? "checked" : ""}>
-                    ${escapeHtml(a.label)}
-                  </label>`).join("")}
-              </div>
+              <div style="margin-top:8px;">${areaListHtml}</div>
             </div>` : ""}
           ${addingAreaForIdx === i
             ? `<div style="display:flex; gap:6px; margin-top:10px;">
