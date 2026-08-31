@@ -4172,7 +4172,7 @@ function openSubstituteModal(container, workout, exerciseId, navigate) {
 
     if (makePermanent) {
       const order = await storage.getExerciseOrder();
-      const typeOrder = (order[workout.type] || PROGRAM[workout.type].exercises.map((e) => e.id)).slice();
+      const typeOrder = (order[workout.type] || PROGRAM[workout.type]?.exercises.map((e) => e.id) || []).slice();
       const idx = typeOrder.indexOf(oldId);
       if (idx !== -1) typeOrder[idx] = newDef.id; else typeOrder.push(newDef.id);
       await storage.setExerciseOrder(workout.type, typeOrder);
@@ -4409,7 +4409,7 @@ async function historyRenderList(container, navigate) {
         <div class="history-item" data-id="${w.id}" style="cursor:pointer;">
           <div class="h-index">${formatDateShort(w.startedAt)}</div>
           <div class="h-body">
-            <div class="h-title">${PROGRAM[w.type].label} <span class="badge ${w.status === "completed" ? "badge-positive" : w.status === "partial" ? "badge-warn" : ""}">${w.status}</span></div>
+            <div class="h-title">${PROGRAM[w.type]?.label || w.type} <span class="badge ${w.status === "completed" ? "badge-positive" : w.status === "partial" ? "badge-warn" : ""}">${w.status}</span></div>
             <div class="h-meta">${completed}/${programmed} sets${cardioDone ? ` · cardio ${cardioDone}/2` : ""}</div>
           </div>
           <div class="h-chevron">›</div>
