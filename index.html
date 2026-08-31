@@ -319,18 +319,6 @@ body.pre-auth .bottom-nav{ display: none; }
 }
 .toggle-row button.active{ background: var(--c-blood); color: var(--c-off); }
 
-/* A plain select styled to match .field select, for selects used outside a
-   .field wrapper (e.g. compact rows in the Personal Schedule tab). */
-.select-inline{
-  background: var(--c-charcoal);
-  border: 1px solid var(--c-hairline-strong);
-  border-radius: var(--radius-md);
-  padding: 8px 8px;
-  font-size: 12.5px;
-  color: var(--c-off);
-  width: 100%;
-}
-
 /* ==========================================================================
    History calendar grid
    ========================================================================== */
@@ -981,151 +969,197 @@ function getExerciseUnit(settings, exerciseId) {
 
 const SCHEMA_VERSION = 1;
 
-// Fixed list of target muscle groups an exercise can be tagged with, used
-// for per-muscle volume tallies. "other" is the default for exercises that
-// haven't been tagged yet. This is the "Standard" detail level — always
-// shown, regardless of which detail level the user has selected — and the
-// level every sub-muscle below eventually rolls up to.
+// Flexible muscle targeting system --------------------------------------
+//
+// An exercise is tagged with one or more MUSCLES (e.g. "Back"), and each
+// muscle can carry any number of specific TARGET AREAS (e.g. "Lats",
+// "Upper Back"). The first entry in an exercise's `muscles` array is its
+// primary muscle; any further entries are "additional" muscles it also
+// trains. The user decides what an exercise targets — nothing here is
+// hard-coded to specific exercises.
 const MUSCLE_GROUPS = [
   { key: "chest", label: "Chest" },
   { key: "back", label: "Back" },
   { key: "shoulders", label: "Shoulders" },
-  { key: "biceps", label: "Biceps" },
-  { key: "triceps", label: "Triceps" },
+  { key: "arms", label: "Arms" },
   { key: "forearms", label: "Forearms" },
-  { key: "quads", label: "Quads" },
-  { key: "hamstrings", label: "Hamstrings" },
-  { key: "glutes", label: "Glutes" },
-  { key: "calves", label: "Calves" },
-  { key: "abs", label: "Abs / Core" },
-  { key: "traps", label: "Traps" },
+  { key: "legs", label: "Legs" },
+  { key: "core", label: "Core" },
   { key: "other", label: "Other" },
 ];
+const MUSCLE_BY_KEY = new Map(MUSCLE_GROUPS.map((m) => [m.key, m]));
 
-// Additional, more specific muscles offered once the user picks "Advanced"
-// (level 1) or "Anatomical" (level 2). Each one names its direct parent —
-// a main group for level 1, or a main group / level-1 muscle for level 2 —
-// so volume can always be "rolled up" to whatever level is being displayed.
-// This list is what makes the volume system capable of more detail without
-// touching the default (Standard) UI at all.
-const MUSCLE_SUBGROUPS = [
-  // level 1 — Advanced: useful synergist muscles worth tracking on their own
-  { key: "lats", label: "Lats", parent: "back", level: 1 },
-  { key: "rhomboids", label: "Rhomboids", parent: "back", level: 1 },
-  { key: "erectors", label: "Erectors (Lower Back)", parent: "back", level: 1 },
-  { key: "teres_major", label: "Teres Major", parent: "back", level: 1 },
-  { key: "brachialis", label: "Brachialis", parent: "biceps", level: 1 },
-  { key: "brachioradialis", label: "Brachioradialis", parent: "forearms", level: 1 },
-  { key: "adductors", label: "Adductors (Inner Thigh)", parent: "glutes", level: 1 },
-  { key: "abductors", label: "Abductors (Outer Hip)", parent: "glutes", level: 1 },
-  { key: "obliques", label: "Obliques", parent: "abs", level: 1 },
-  { key: "hip_flexors", label: "Hip Flexors", parent: "quads", level: 1 },
+// Preset target areas offered for each muscle. Purely a menu of suggestions
+// — the user can always add their own via "+ Add Target Area", and can
+// select any number of these for a given muscle.
+const TARGET_AREAS_BY_MUSCLE = {
+  chest: [
+    { key: "chest_upper", label: "Upper Chest" },
+    { key: "chest_mid", label: "Mid Chest" },
+    { key: "chest_lower", label: "Lower Chest" },
+  ],
+  back: [
+    { key: "upper_lat", label: "Upper Lat" },
+    { key: "lower_lat", label: "Lower Lat" },
+    { key: "upper_back", label: "Upper Back" },
+    { key: "erectors", label: "Erectors" },
+  ],
+  shoulders: [
+    { key: "front_delts", label: "Front Delts" },
+    { key: "lateral_delts", label: "Lateral Delts" },
+    { key: "rear_delts", label: "Rear Delts" },
+  ],
+  arms: [
+    { key: "biceps", label: "Biceps" },
+    { key: "brachialis", label: "Brachialis" },
+    { key: "triceps", label: "Triceps" },
+  ],
+  forearms: [
+    { key: "brachioradialis", label: "Brachioradialis" },
+    { key: "flexors", label: "Flexors" },
+    { key: "extensors", label: "Extensors" },
+  ],
+  legs: [
+    { key: "quads", label: "Quads" },
+    { key: "hamstring", label: "Hamstring" },
+    { key: "glutes", label: "Glutes" },
+    { key: "calves", label: "Calves" },
+  ],
+  core: [
+    { key: "abs", label: "Abs" },
+    { key: "obliques", label: "Obliques" },
+  ],
+  other: [],
+};
 
-  // level 2 — Anatomical: individual heads/regions, for the most detailed view
-  { key: "chest_upper", label: "Chest — Upper (Clavicular)", parent: "chest", level: 2 },
-  { key: "chest_lower", label: "Chest — Lower (Sternal)", parent: "chest", level: 2 },
-  { key: "triceps_long", label: "Triceps — Long Head", parent: "triceps", level: 2 },
-  { key: "triceps_lateral", label: "Triceps — Lateral Head", parent: "triceps", level: 2 },
-  { key: "triceps_medial", label: "Triceps — Medial Head", parent: "triceps", level: 2 },
-  { key: "biceps_long", label: "Biceps — Long Head", parent: "biceps", level: 2 },
-  { key: "biceps_short", label: "Biceps — Short Head", parent: "biceps", level: 2 },
-  { key: "delts_front", label: "Front Delt", parent: "shoulders", level: 2 },
-  { key: "delts_side", label: "Side Delt", parent: "shoulders", level: 2 },
-  { key: "delts_rear", label: "Rear Delt", parent: "shoulders", level: 2 },
-  { key: "quads_rectus_femoris", label: "Rectus Femoris", parent: "quads", level: 2 },
-  { key: "quads_vastus_lateralis", label: "Vastus Lateralis (Outer Quad)", parent: "quads", level: 2 },
-  { key: "quads_vastus_medialis", label: "Vastus Medialis (Inner Quad)", parent: "quads", level: 2 },
-  { key: "hamstrings_biceps_femoris", label: "Biceps Femoris (Outer Hamstring)", parent: "hamstrings", level: 2 },
-  { key: "hamstrings_medial", label: "Semitendinosus / -membranosus (Inner Hamstring)", parent: "hamstrings", level: 2 },
-  { key: "glutes_max", label: "Glute Max", parent: "glutes", level: 2 },
-  { key: "glutes_med", label: "Glute Medius / Minimus", parent: "glutes", level: 2 },
-  { key: "calves_gastroc", label: "Gastrocnemius", parent: "calves", level: 2 },
-  { key: "calves_soleus", label: "Soleus", parent: "calves", level: 2 },
-  { key: "abs_upper", label: "Upper Abs", parent: "abs", level: 2 },
-  { key: "abs_lower", label: "Lower Abs", parent: "abs", level: 2 },
-  { key: "traps_upper", label: "Upper Traps", parent: "traps", level: 2 },
-  { key: "traps_mid_lower", label: "Mid / Lower Traps", parent: "traps", level: 2 },
-  { key: "forearms_flexors", label: "Forearm Flexors", parent: "forearms", level: 2 },
-  { key: "forearms_extensors", label: "Forearm Extensors", parent: "forearms", level: 2 },
-];
+// Maps every muscle key from earlier versions of this taxonomy (both the
+// original 13-muscle flat list, and the anatomical sub-muscle keys that
+// existed under it) onto the current { muscle, area } shape, so existing
+// exercises migrate automatically the first time they're read — nothing
+// gets dropped or reset to "Other" unnecessarily. A sub-muscle with no
+// clean equivalent still maps to its correct muscle, just without a
+// pre-picked target area.
+const LEGACY_SUBMUSCLE_MIGRATION = {
+  // Former standalone primary muscles, now folded into a broader group.
+  biceps: { muscle: "arms", area: "biceps" },
+  triceps: { muscle: "arms", area: "triceps" },
+  quads: { muscle: "legs", area: "quads" },
+  hamstrings: { muscle: "legs", area: "hamstring" },
+  glutes: { muscle: "legs", area: "glutes" },
+  calves: { muscle: "legs", area: "calves" },
+  abs: { muscle: "core", area: "abs" },
+  traps: { muscle: "back", area: "upper_back" },
+  // Older anatomical sub-muscle keys.
+  lats: { muscle: "back", area: null },
+  rhomboids: { muscle: "back", area: "upper_back" },
+  erectors: { muscle: "back", area: "erectors" },
+  teres_major: { muscle: "back", area: "upper_back" },
+  teres_minor: { muscle: "back", area: "upper_back" },
+  infraspinatus: { muscle: "back", area: "upper_back" },
+  brachialis: { muscle: "arms", area: "brachialis" },
+  brachioradialis: { muscle: "forearms", area: "brachioradialis" },
+  adductors: { muscle: "legs", area: "glutes" },
+  abductors: { muscle: "legs", area: "glutes" },
+  obliques: { muscle: "core", area: "obliques" },
+  hip_flexors: { muscle: "legs", area: "quads" },
+  chest_upper: { muscle: "chest", area: "chest_upper" },
+  chest_lower: { muscle: "chest", area: "chest_lower" },
+  triceps_long: { muscle: "arms", area: "triceps" },
+  triceps_lateral: { muscle: "arms", area: "triceps" },
+  triceps_medial: { muscle: "arms", area: "triceps" },
+  biceps_long: { muscle: "arms", area: "biceps" },
+  biceps_short: { muscle: "arms", area: "biceps" },
+  delts_front: { muscle: "shoulders", area: "front_delts" },
+  delts_side: { muscle: "shoulders", area: "lateral_delts" },
+  delts_rear: { muscle: "shoulders", area: "rear_delts" },
+  quads_rectus_femoris: { muscle: "legs", area: "quads" },
+  quads_vastus_lateralis: { muscle: "legs", area: "quads" },
+  quads_vastus_medialis: { muscle: "legs", area: "quads" },
+  hamstrings_biceps_femoris: { muscle: "legs", area: "hamstring" },
+  hamstrings_medial: { muscle: "legs", area: "hamstring" },
+  glutes_max: { muscle: "legs", area: "glutes" },
+  glutes_med: { muscle: "legs", area: "glutes" },
+  calves_gastroc: { muscle: "legs", area: "calves" },
+  calves_soleus: { muscle: "legs", area: "calves" },
+  abs_upper: { muscle: "core", area: "abs" },
+  abs_lower: { muscle: "core", area: "abs" },
+  traps_upper: { muscle: "back", area: "upper_back" },
+  traps_mid_lower: { muscle: "back", area: "upper_back" },
+  forearms_flexors: { muscle: "forearms", area: "flexors" },
+  forearms_extensors: { muscle: "forearms", area: "extensors" },
+};
 
-// Full taxonomy = the 13 main groups (level 0, parent null) + every
-// sub-muscle above. MUSCLE_BY_KEY is the lookup every helper below uses.
-const MUSCLE_TAXONOMY = [
-  ...MUSCLE_GROUPS.map((m) => ({ ...m, parent: null, level: 0 })),
-  ...MUSCLE_SUBGROUPS,
-];
-const MUSCLE_BY_KEY = new Map(MUSCLE_TAXONOMY.map((m) => [m.key, m]));
-
-// The 3 user-selectable detail levels. "rank" is what the rest of the
-// volume system compares against — a plain 0/1/2 matching each muscle's
-// own "level" field above.
-const MUSCLE_DETAIL_LEVELS = [
-  { key: "standard", label: "Standard", rank: 0 },
-  { key: "advanced", label: "Advanced", rank: 1 },
-  { key: "anatomical", label: "Anatomical", rank: 2 },
-];
-function muscleDetailRank(levelKey) {
-  return MUSCLE_DETAIL_LEVELS.find((l) => l.key === levelKey)?.rank ?? 0;
+function legacyKeyToMuscleArea(key) {
+  if (!key) return { muscle: "other", area: null };
+  if (MUSCLE_BY_KEY.has(key)) return { muscle: key, area: null };
+  if (LEGACY_SUBMUSCLE_MIGRATION[key]) return LEGACY_SUBMUSCLE_MIGRATION[key];
+  return { muscle: "other", area: null };
 }
 
-function muscleGroupLabel(key) {
+function muscleLabel(key) {
   return MUSCLE_BY_KEY.get(key)?.label || "Other";
 }
 
-// A muscle's own key, then each parent up to its main group — e.g.
-// "triceps_long" -> ["triceps_long", "triceps"]. A main group's chain is
-// just itself. Anything unrecognized falls back to "other".
-function muscleAncestorChain(key) {
-  const chain = [];
-  let node = MUSCLE_BY_KEY.get(key) || MUSCLE_BY_KEY.get("other");
-  while (node) {
-    chain.push(node.key);
-    node = node.parent ? MUSCLE_BY_KEY.get(node.parent) : null;
-  }
-  return chain;
+function targetAreaOptions(muscleKey) {
+  return TARGET_AREAS_BY_MUSCLE[muscleKey] || [];
 }
 
-// Rolls a (possibly very specific) muscle key up to the given detail
-// level's granularity — e.g. "triceps_long" at rank 0 becomes "triceps".
-// A muscle already coarser than the requested rank is returned unchanged,
-// so switching detail levels never invents detail that was never tagged,
-// and never discards a tag that's already coarser than the new level.
-function muscleAtLevel(key, levelRank) {
-  const chain = muscleAncestorChain(key);
-  for (const k of chain) {
-    const node = MUSCLE_BY_KEY.get(k);
-    if (node && node.level <= levelRank) return k;
-  }
-  return "other";
+function areaPresetLabel(muscleKey, areaKey) {
+  const found = targetAreaOptions(muscleKey).find((a) => a.key === areaKey);
+  return found ? found.label : null;
 }
 
-// Every taxonomy key that rolls up to rootKey — rootKey itself plus every
-// descendant at any level — used to fold a main group's sub-muscle volume
-// back together when rendering a breakdown.
-function muscleDescendantKeys(rootKey) {
-  return MUSCLE_TAXONOMY.filter((m) => muscleAncestorChain(m.key).includes(rootKey)).map((m) => m.key);
+// Migrates one `muscles` array entry whose `.muscle` is a key from a
+// previous version of MUSCLE_GROUPS (e.g. "biceps" back when it was its
+// own primary muscle) onto the current taxonomy. If the entry already has
+// specific target areas tagged, those are kept as-is (their labels still
+// display correctly even if the key no longer matches a current preset).
+// If it has no areas at all, a fallback area representing the old primary
+// muscle's identity is added so that specificity isn't silently lost.
+function migrateLegacyMuscleEntry(m) {
+  if (MUSCLE_BY_KEY.has(m.muscle)) return m;
+  const mapped = LEGACY_SUBMUSCLE_MIGRATION[m.muscle];
+  if (!mapped) return { muscle: "other", areas: m.areas || [] };
+  const hasAreas = Array.isArray(m.areas) && m.areas.length > 0;
+  if (hasAreas) return { muscle: mapped.muscle, areas: m.areas };
+  const areas = mapped.area ? [{ key: mapped.area, label: areaPresetLabel(mapped.muscle, mapped.area) || mapped.area, custom: false }] : [];
+  return { muscle: mapped.muscle, areas };
 }
 
-// Builds <option>/<optgroup> markup for a muscle picker, limited to what's
-// selectable at the given detail level. At rank 0 (Standard) this is just
-// the flat 13-item list, unchanged from before. At rank 1+ it groups each
-// main group's available sub-muscles underneath it via <optgroup>, so the
-// dropdown stays organized instead of dumping 30+ flat options on the user.
-// includeNone adds a leading "None" option, for the optional secondary-
-// muscle picker.
-function muscleOptionsHtml(selectedKey, levelRank, includeNone) {
-  const none = includeNone ? `<option value="">None</option>` : "";
-  if (levelRank <= 0) {
-    return none + MUSCLE_GROUPS.map((m) => `<option value="${m.key}" ${m.key === selectedKey ? "selected" : ""}>${escapeHtml(m.label)}</option>`).join("");
-  }
-  return none + MUSCLE_GROUPS.map((main) => {
-    const subs = MUSCLE_SUBGROUPS.filter((s) => s.level <= levelRank && muscleAncestorChain(s.key).includes(main.key));
-    const mainOption = `<option value="${main.key}" ${main.key === selectedKey ? "selected" : ""}>${escapeHtml(main.label)}</option>`;
-    if (!subs.length) return mainOption;
-    const subOptions = subs.map((s) => `<option value="${s.key}" ${s.key === selectedKey ? "selected" : ""}>${escapeHtml("  " + s.label)}</option>`).join("");
-    return `<optgroup label="${escapeHtml(main.label)}">${mainOption}${subOptions}</optgroup>`;
-  }).join("");
+// Cleans up a `muscles` array (from storage, or from the muscle editor) into
+// a well-formed shape: every entry has a valid muscle key and an array of
+// { key, label, custom } target areas. Always returns at least one entry.
+function sanitizeMuscleEntries(list) {
+  const cleaned = (Array.isArray(list) ? list : [])
+    .filter((m) => m && m.muscle)
+    .map((m) => migrateLegacyMuscleEntry(m))
+    .map((m) => ({
+      muscle: MUSCLE_BY_KEY.has(m.muscle) ? m.muscle : "other",
+      areas: Array.isArray(m.areas)
+        ? m.areas
+            .filter((a) => a && a.key)
+            .map((a) => ({ key: a.key, label: a.label || areaPresetLabel(m.muscle, a.key) || a.key, custom: !!a.custom }))
+        : [],
+    }));
+  return cleaned.length ? cleaned : [{ muscle: "other", areas: [] }];
+}
+
+// Normalizes any exercise-like object into the current `muscles` array
+// shape, migrating the old `muscleGroup` / `secondaryMuscle` fields the
+// first time an exercise tagged under the old system is read. Nothing is
+// deleted: a primary + secondary pairing becomes a primary + additional
+// muscle pairing, preserving the same relative volume weighting.
+function normalizeExerciseMuscles(c) {
+  if (Array.isArray(c.muscles) && c.muscles.length) return sanitizeMuscleEntries(c.muscles);
+  const entries = [];
+  const pushLegacy = (key) => {
+    const resolved = legacyKeyToMuscleArea(key);
+    const areas = resolved.area ? [{ key: resolved.area, label: areaPresetLabel(resolved.muscle, resolved.area) || resolved.area, custom: false }] : [];
+    entries.push({ muscle: resolved.muscle, areas });
+  };
+  pushLegacy(c.muscleGroup || "other");
+  if (c.secondaryMuscle) pushLegacy(c.secondaryMuscle);
+  return entries.length ? entries : [{ muscle: "other", areas: [] }];
 }
 
 let PROGRAM = {};
@@ -1147,7 +1181,7 @@ function rebuildProgram(customList, overrides, order) {
   for (const dt of PROGRAM_DAY_TYPES) {
     const custom = list
       .filter((c) => c.type === dt.key)
-      .map((c) => ({ id: c.id, name: c.name, sets: c.sets, unilateral: !!c.unilateral, muscleGroup: c.muscleGroup || "other", secondaryMuscle: c.secondaryMuscle || null, custom: true }));
+      .map((c) => ({ id: c.id, name: c.name, sets: c.sets, unilateral: !!c.unilateral, muscles: normalizeExerciseMuscles(c), custom: true }));
     const withOverrides = custom
       .filter((e) => !ov[e.id]?.removed)
       .map((e) => {
@@ -1157,8 +1191,7 @@ function rebuildProgram(customList, overrides, order) {
           ...e,
           ...(typeof o.sets === "number" ? { sets: o.sets } : {}),
           ...(typeof o.unilateral === "boolean" ? { unilateral: o.unilateral } : {}),
-          ...(typeof o.muscleGroup === "string" ? { muscleGroup: o.muscleGroup } : {}),
-          ...(Object.prototype.hasOwnProperty.call(o, "secondaryMuscle") ? { secondaryMuscle: o.secondaryMuscle } : {}),
+          ...(Array.isArray(o.muscles) ? { muscles: sanitizeMuscleEntries(o.muscles) } : {}),
         };
       });
 
@@ -1187,87 +1220,109 @@ function programTotalSets(type) {
 }
 
 // Unilateral exercise volume rule: a unilateral exercise's programmed set
-// count (e.g. "2 sets") means 2 sets per side — both the left and the right
-// side perform the prescribed sets. So for training-volume purposes each
-// unilateral exercise contributes double its programmed sets, while its own
+// count (e.g. "2 sets") counts as 2 sets of volume, same as a bilateral
+// exercise — one side or both sides, a "set" is a set. The per-exercise
 // programmed set count (shown elsewhere, and what the user edits) never
-// changes. Applies uniformly across every workout day type (Upper, Lower,
-// Full Body, or any custom split) since it operates on PROGRAM[type] generically.
-const UNILATERAL_VOLUME_MULTIPLIER = 2;
+// changes either way. Applies uniformly across every workout day type
+// (Upper, Lower, Full Body, or any custom split) since it operates on
+// PROGRAM[type] generically.
+const UNILATERAL_VOLUME_MULTIPLIER = 1;
 
 function exerciseVolumeSets(e) {
   if (!e) return 0;
   return e.sets * (e.unilateral ? UNILATERAL_VOLUME_MULTIPLIER : 1);
 }
 
-// Total training volume for a workout day type, in "volume sets": bilateral
-// exercises count their programmed sets once; unilateral exercises count
-// double (once per side). This is the figure used for total workout volume
-// — never the per-exercise programmed set count itself, which stays as-is.
+// Total training volume for a workout day type, in "volume sets": every
+// exercise, bilateral or unilateral, counts its programmed sets once. This
+// is the figure used for total workout volume — never the per-exercise
+// programmed set count itself, which stays as-is.
 function programVolumeSets(type) {
   return PROGRAM[type] ? PROGRAM[type].exercises.reduce((sum, e) => sum + exerciseVolumeSets(e), 0) : 0;
 }
 
-// Weight applied to an exercise's secondary muscle, relative to its primary
-// (which always counts as 1.0×). Reflects that a secondary mover is worked,
-// but less directly than the primary target, so it doesn't add a full extra
-// set of volume for that muscle.
+// Weight applied to an exercise's additional (non-primary) muscles, relative
+// to its primary muscle (which always counts as 1.0×). Reflects that an
+// additional mover is worked, but less directly than the primary target, so
+// it doesn't add a full extra set of volume for that muscle.
 const SECONDARY_MUSCLE_VOLUME_WEIGHT = 0.5;
 
-// Per-muscle volume for a workout day type: { muscleKey: volumeSets }.
-// Uses the same unilateral doubling as programVolumeSets, so a muscle
-// trained by a unilateral exercise gets credit for both sides' sets.
-// levelRank (0/1/2, see MUSCLE_DETAIL_LEVELS) controls how finely results
-// are bucketed — every exercise's tagged muscle(s) are rolled up to that
-// granularity, so this always returns sensible totals regardless of how
-// specifically (or not) individual exercises have been tagged.
-function programMuscleVolume(type, levelRank = 0) {
+// A normalized `muscles` array for any exercise-like object, always at
+// least one entry. Falls back gracefully for anything unexpected.
+function exerciseMuscles(e) {
+  return Array.isArray(e && e.muscles) && e.muscles.length ? e.muscles : [{ muscle: "other", areas: [] }];
+}
+
+// Per-muscle volume for a workout day type: { muscleKey: volumeSets }. Uses
+// the same set-counting rule as programVolumeSets (unilateral sets count
+// the same as bilateral sets). A muscle entry's
+// volume is weighted by its position (1.0× primary, 0.5× each additional
+// muscle) — an exercise tagged with just a muscle (no specific target area)
+// still counts fully toward that muscle. Target areas are still tracked per
+// exercise (for tagging precision) but aren't broken out here — this is
+// muscle-group volume only, on purpose, to keep the summary readable.
+function programMuscleVolume(type) {
   const totals = {};
   if (!PROGRAM[type]) return totals;
   for (const e of PROGRAM[type].exercises) {
     const vol = exerciseVolumeSets(e);
-    const primaryKey = muscleAtLevel(e.muscleGroup || "other", levelRank);
-    totals[primaryKey] = (totals[primaryKey] || 0) + vol;
-    if (e.secondaryMuscle) {
-      const secondaryKey = muscleAtLevel(e.secondaryMuscle, levelRank);
-      totals[secondaryKey] = (totals[secondaryKey] || 0) + vol * SECONDARY_MUSCLE_VOLUME_WEIGHT;
-    }
+    exerciseMuscles(e).forEach((m, idx) => {
+      const weight = idx === 0 ? 1 : SECONDARY_MUSCLE_VOLUME_WEIGHT;
+      totals[m.muscle] = (totals[m.muscle] || 0) + vol * weight;
+    });
   }
   return totals;
 }
 
 // Same breakdown, aggregated across every day type in the current program —
 // e.g. "how much volume does chest get across my whole split".
-function programMuscleVolumeAll(levelRank = 0) {
+function programMuscleVolumeAll() {
   const totals = {};
   for (const dt of PROGRAM_DAY_TYPES) {
-    const dayTotals = programMuscleVolume(dt.key, levelRank);
-    for (const [key, val] of Object.entries(dayTotals)) {
+    const day = programMuscleVolume(dt.key);
+    for (const [key, val] of Object.entries(day)) {
       totals[key] = (totals[key] || 0) + val;
     }
   }
   return totals;
 }
 
-// Renders a muscle-volume breakdown. At Standard (levelRank 0) this is the
-// same flat "Label: value" list as before. At Advanced/Anatomical, each
-// main group's line rolls up all of its sub-muscle volume into one total,
-// with the individual sub-muscle contributions shown alongside it — so the
-// dashboard stays anchored to the familiar main groups even when the
-// underlying data is more detailed.
-function muscleVolumeBreakdownHtml(totals, levelRank = 0) {
-  const lines = MUSCLE_GROUPS.map((main) => {
-    const descKeys = muscleDescendantKeys(main.key);
-    const mainTotal = descKeys.reduce((sum, k) => sum + (totals[k] || 0), 0);
-    if (mainTotal <= 0) return null;
-    const subEntries = levelRank > 0
-      ? descKeys.filter((k) => k !== main.key && totals[k] > 0).map((k) => `${escapeHtml(muscleGroupLabel(k))}: ${roundTo(totals[k])}`)
-      : [];
-    const subHtml = subEntries.length ? ` <span class="text-faint">(${subEntries.join(" · ")})</span>` : "";
-    return `${escapeHtml(main.label)}: ${roundTo(mainTotal)}${subHtml}`;
-  }).filter(Boolean);
+// Renders a simple, flat muscle-volume breakdown — one line per muscle
+// group with volume, no expandable target-area detail. Volume tracking is
+// intentionally kept to this single level so the summary stays readable.
+function muscleVolumeBreakdownHtml(totals) {
+  const lines = MUSCLE_GROUPS
+    .map((main) => ({ label: main.label, total: totals[main.key] }))
+    .filter((x) => x.total > 0);
   if (!lines.length) return "";
-  return `<p class="text-faint" style="margin:6px 0 0; font-size:12px;">${lines.join(" · ")}</p>`;
+  return `<div style="margin-top:4px; font-size:13px;">${lines.map((x) => `<div style="padding:3px 0;">${escapeHtml(x.label)} — ${roundTo(x.total)}</div>`).join("")}</div>`;
+}
+
+// A compact one-line summary of what an exercise targets, e.g.
+// "Back (Lats, Upper Back) + Rear Delts" — used wherever an exercise is
+// listed (program overview, exercise list, exercise detail).
+function muscleSummaryText(e) {
+  return exerciseMuscles(e)
+    .map((m) => {
+      const label = muscleLabel(m.muscle);
+      const areas = (m.areas || []).map((a) => a.label);
+      return areas.length ? `${label} (${areas.join(", ")})` : label;
+    })
+    .join(" + ");
+}
+
+// A short label for the compact "Muscles" button shown on each program
+// exercise row and the Add Exercise form.
+function muscleChipText(e) {
+  const muscles = exerciseMuscles(e);
+  const primary = muscles[0];
+  const primaryLabel = muscleLabel(primary.muscle);
+  const areas = primary.areas || [];
+  let text = primaryLabel;
+  if (areas.length === 1) text += ` · ${areas[0].label}`;
+  else if (areas.length > 1) text += ` · ${areas[0].label} +${areas.length - 1}`;
+  if (muscles.length > 1) text += ` · +${muscles.length - 1} more`;
+  return text;
 }
 
 function allExerciseDefs() {
@@ -1386,459 +1441,6 @@ function todaysScheduledType(settings, programState, overrides) {
   const startDateStr = settings.scheduleStartDate || DEFAULT_SETTINGS.scheduleStartDate;
   return effectiveDayTypeForDate(new Date(), startDateStr, programState.pattern || [], overrides || {});
 }
-
-// Parses a "YYYY-MM-DD" string into a short local-date label without ever
-// going through UTC parsing (new Date("2026-09-08") can render as Sept 7 in
-// timezones behind UTC) — mirrors the local-time convention dateKey() uses.
-function formatDateStrShort(dateStr) {
-  if (!dateStr) return "";
-  const [y, m, d] = dateStr.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-// ============================================================================
-// PERSONAL SCHEDULE — pure logic, layered on top of (never replacing) the
-// Training Schedule above. A Routine is a reusable named day template (time
-// blocks with a purpose + priority) — e.g. "Weekday Routine", "Exam Week".
-// Every date resolves to a routine via, in order of precedence:
-//   1. a one-date override (set from Day View — swaps just that date)
-//   2. an active Routine Period (a temporary date-range assignment)
-//   3. the weekly day-of-week default
-// Personal Events (recurring or one-time) layer on top of whichever routine
-// is resolved. Every override/period/event is its own independent record,
-// so changing one date's routine never touches any other date, and deleting
-// an event never touches a routine or vice versa.
-// ============================================================================
-
-const PRIORITY_LEVELS = [
-  { key: "hard", label: "Hard Restriction", colorVar: "--c-crimson-bright" },
-  { key: "high", label: "High Priority", colorVar: "--c-warn" },
-  { key: "normal", label: "Normal", colorVar: "--c-off-dim" },
-  { key: "preference", label: "Preference", colorVar: "--c-gold" },
-  { key: "flexible", label: "Flexible", colorVar: "--c-positive" },
-];
-function priorityLabel(key) { return (PRIORITY_LEVELS.find((p) => p.key === key) || {}).label || key || "Normal"; }
-function priorityColorVar(key) { return (PRIORITY_LEVELS.find((p) => p.key === key) || {}).colorVar || "--c-off-faint"; }
-
-const ACTIVITY_TYPE_SUGGESTIONS = [
-  "School", "Work", "Class", "Exam", "Appointment", "Travel", "Family",
-  "Study", "Project", "Hobby", "Recovery", "Training Focus", "Free Time", "Custom",
-];
-
-// 0 = Sunday .. 6 = Saturday, matching Date#getDay(). Parses in local time.
-function dowOfDateStr(dateStr) {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  return new Date(y, m - 1, d).getDay();
-}
-
-// Finds the routine period (if any) covering a date. If more than one
-// overlaps, the most recently created (last in the array) wins — periods
-// are meant to be short, deliberate exceptions, so a newer one reflects the
-// user's latest intent without deleting the older record.
-function routinePeriodForDate(dateStr, periods) {
-  let match = null;
-  for (const p of periods || []) {
-    if (dateStr >= p.startDate && dateStr <= p.endDate) match = p;
-  }
-  return match;
-}
-
-// Which routine id governs a given date, in precedence order: per-date
-// override > active routine period > weekly day-of-week default.
-function resolveRoutineIdForDate(dateStr, { weeklyRoutineMap, routinePeriods, dateOverrides }) {
-  const override = (dateOverrides || {})[dateStr];
-  if (override && override.routineId !== undefined && override.routineId !== null) return override.routineId;
-  const period = routinePeriodForDate(dateStr, routinePeriods);
-  if (period) return period.routineId;
-  const dow = dowOfDateStr(dateStr);
-  const map = weeklyRoutineMap || {};
-  const v = map[dow] !== undefined ? map[dow] : map[String(dow)];
-  return v ?? null;
-}
-
-// Expands recurring + one-time personal events to the ones occurring on a
-// given date. A recurring event's date range is independent of any routine,
-// so it never disappears just because the routine for that day changed.
-function eventsOccurringOnDate(dateStr, events) {
-  const dow = dowOfDateStr(dateStr);
-  return (events || []).filter((e) => {
-    if (e.recurrence) {
-      const r = e.recurrence;
-      if (!r.daysOfWeek || !r.daysOfWeek.includes(dow)) return false;
-      if (r.startDate && dateStr < r.startDate) return false;
-      if (r.endDate && dateStr > r.endDate) return false;
-      return true;
-    }
-    return e.date === dateStr;
-  });
-}
-
-// Merges a routine's time blocks with the day's events into one
-// chronologically-sorted timeline for display. All-day items float to top.
-function mergeDayTimeline(routineBlocks, dayEvents) {
-  const items = [
-    ...(routineBlocks || []).map((b) => ({ ...b, source: "routine" })),
-    ...(dayEvents || []).map((e) => ({
-      id: e.id, start: e.start, end: e.end, label: e.title,
-      activityType: e.activityType, priority: e.priority,
-      allDay: e.allDay, source: "event",
-    })),
-  ];
-  items.sort((a, b) => {
-    if (a.allDay && !b.allDay) return -1;
-    if (b.allDay && !a.allDay) return 1;
-    return (a.start || "").localeCompare(b.start || "");
-  });
-  return items;
-}
-
-// The full picture for one date: which routine governs it (and why),
-// whether the user has forced the day free/unavailable, any focus they've
-// assigned, the events on it, and the merged timeline. Both the Personal
-// tab's Day View and the merged calendar read from this single function.
-function getPersonalDayPlan(dateStr, data) {
-  const { routines, weeklyRoutineMap, routinePeriods, dateOverrides, events } = data;
-  const override = (dateOverrides || {})[dateStr] || null;
-  const period = routinePeriodForDate(dateStr, routinePeriods);
-  let routineSource = "weekly";
-  if (override && override.routineId !== undefined && override.routineId !== null) routineSource = "override";
-  else if (period) routineSource = "period";
-  const routineId = resolveRoutineIdForDate(dateStr, { weeklyRoutineMap, routinePeriods, dateOverrides });
-  const routine = (routines || []).find((r) => r.id === routineId) || null;
-  const dayEvents = eventsOccurringOnDate(dateStr, events);
-  const timeline = mergeDayTimeline(routine ? routine.blocks : [], dayEvents);
-  const availabilityOverride = override && override.availability ? override.availability : null;
-  const focus = override && override.focus ? override.focus : null;
-  const hasHardBlock = timeline.some((b) => b.priority === "hard");
-  return {
-    date: dateStr, routine, routineSource, routinePeriod: period,
-    availabilityOverride, focus, events: dayEvents, timeline,
-    hasHardBlock, isDateOverridden: !!override,
-  };
-}
-
-// Day-level status headline (Free / Limited / Busy / Unavailable / Open) —
-// the fine-grained detail lives in the timeline; this just drives badges.
-function personalDayStatus(plan) {
-  if (plan.availabilityOverride === "unavailable") return "Unavailable";
-  if (plan.availabilityOverride === "free") return "Free";
-  if (plan.hasHardBlock) return "Busy";
-  if (plan.timeline.length) return "Limited";
-  return "Open";
-}
-
-// Phase-1/2 conflict detection: does a scheduled training day land on a
-// date the user has explicitly marked unavailable ("blocked"), or one
-// that's merely busy with a hard-priority block but not fully blocked
-// ("busy")? Nothing is moved automatically — this only classifies the day
-// so Day View can show the right message and offer the right actions.
-function trainingDayAdvisory(trainingLetter, plan) {
-  if (!trainingLetter || trainingLetter === "R") return { level: "none", message: null, hardBlocks: [] };
-  // An explicit "I'm free" declaration is the user overriding whatever the
-  // routine implies — it wins over a routine's hard blocks, the same way
-  // any date override wins over its routine in getPersonalDayPlan.
-  if (plan.availabilityOverride === "free") return { level: "none", message: null, hardBlocks: [] };
-  const hardBlocks = plan.timeline.filter((b) => b.priority === "hard");
-  if (plan.availabilityOverride === "unavailable") {
-    return { level: "blocked", message: "This is scheduled as a training day, but you've marked this date unavailable.", hardBlocks };
-  }
-  if (hardBlocks.length) {
-    return {
-      level: "busy",
-      message: `This date is busy (${hardBlocks.map((b) => b.label || b.activityType).join(", ")}) — there may still be time to train around it.`,
-      hardBlocks,
-    };
-  }
-  return { level: "none", message: null, hardBlocks: [] };
-}
-
-// Kept for the Dashboard hero, which only wants to know about a hard block
-// (fully unavailable) — a merely-busy day isn't worth interrupting "today's
-// session" for.
-function trainingConflictForDate(trainingLetter, plan) {
-  const advisory = trainingDayAdvisory(trainingLetter, plan);
-  return advisory.level === "blocked" ? advisory.message : null;
-}
-
-// Plain-language reasons a date's training slot is what it is — purely
-// explanatory, changes nothing. Powers "Why is this scheduled here?".
-function explainTrainingDay({ trainingLetter, isPatternOverride, plan, advisory }) {
-  const reasons = [];
-  if (!trainingLetter) { reasons.push("No training pattern is set yet."); return reasons; }
-  if (trainingLetter === "R") {
-    reasons.push(isPatternOverride ? "This date was manually swapped to a Rest day." : "Rest falls here in your training sequence.");
-  } else {
-    reasons.push(isPatternOverride ? "This date was manually swapped to this workout." : "This is what your training sequence schedules for this date.");
-  }
-  if (plan.routine) {
-    reasons.push(`Your "${plan.routine.name}" routine applies to this date${plan.routineSource === "override" ? " (swapped for just this day)" : plan.routineSource === "period" ? " (from a temporary routine period)" : ""}.`);
-  } else {
-    reasons.push("No personal routine is assigned to this date.");
-  }
-  if (advisory.level === "blocked") reasons.push("You've marked this date unavailable, which conflicts with the scheduled workout.");
-  else if (advisory.level === "busy") reasons.push(`This date is busy (${advisory.hardBlocks.map((b) => b.label || b.activityType).join(", ")}), but there's no full-day restriction.`);
-  else if (trainingLetter !== "R") reasons.push("No personal-schedule conflicts were found for this date.");
-  return reasons;
-}
-
-// Scans forward for training days worth reviewing — a date explicitly
-// marked unavailable, or one covered by a temporary Routine Period (Exam
-// Week, Vacation, etc.) that leaves it busy or unavailable. Deliberately
-// does NOT flag ordinary hard blocks from the everyday weekly routine (e.g.
-// school every weekday) — the training pattern was already built around
-// that normal week, so flagging every school day would just be noise.
-// Only genuine anomalies (one-date overrides, temporary periods) surface.
-function findUpcomingTrainingConflicts(startDateStr, numDays, ctx) {
-  const { trainingStartDateStr, pattern, scheduleOverrides, routines, weeklyRoutineMap, routinePeriods, dateOverrides, events } = ctx;
-  const results = [];
-  for (let i = 0; i < numDays; i++) {
-    const dateStr = addDaysToDateStr(startDateStr, i);
-    const [y, m, d] = dateStr.split("-").map(Number);
-    const dateObj = new Date(y, m - 1, d);
-    const trainingLetter = effectiveDayTypeForDate(dateObj, trainingStartDateStr, pattern, scheduleOverrides);
-    if (!trainingLetter || trainingLetter === "R") continue;
-    const plan = getPersonalDayPlan(dateStr, { routines, weeklyRoutineMap, routinePeriods, dateOverrides, events });
-    const isAnomalous = plan.availabilityOverride === "unavailable" || (plan.routineSource === "period" && (plan.hasHardBlock || plan.availabilityOverride === "unavailable"));
-    if (!isAnomalous) continue;
-    const advisory = trainingDayAdvisory(trainingLetter, plan);
-    results.push({ date: dateStr, trainingLetter, advisory, routineName: plan.routine ? plan.routine.name : null, routineSource: plan.routineSource });
-  }
-  return results;
-}
-
-// Pure preview for "Move Workout" — what would change on both dates if the
-// user moves a scheduled workout from sourceDate to targetDate. Nothing is
-// written; the caller shows this and only applies it on explicit confirm.
-function previewMoveWorkout(sourceDate, targetDate, { trainingStartDateStr, pattern, scheduleOverrides }) {
-  const dateObjOf = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
-  const sourceLetter = effectiveDayTypeForDate(dateObjOf(sourceDate), trainingStartDateStr, pattern, scheduleOverrides);
-  const targetBefore = effectiveDayTypeForDate(dateObjOf(targetDate), trainingStartDateStr, pattern, scheduleOverrides);
-  return {
-    sourceDate, sourceBefore: sourceLetter, sourceAfter: "R",
-    targetDate, targetBefore, targetAfter: sourceLetter,
-    overwritesExistingWorkout: !!targetBefore && targetBefore !== "R" && targetDate !== sourceDate,
-    invalid: sourceDate === targetDate || !sourceLetter || sourceLetter === "R",
-  };
-}
-
-// ============================================================================
-// WHAT-IF SIMULATION — lets the user test a hypothetical change ("what if
-// I mark tomorrow unavailable?") and see its effect before committing to
-// anything. applyWhatIfScenario builds an in-memory overlay of the relevant
-// data; nothing here ever touches storage. The caller (renderWhatIf) only
-// writes for real when the user explicitly applies the result.
-// ============================================================================
-
-function applyWhatIfScenario(scenario, base) {
-  const dateOverrides = { ...base.dateOverrides };
-  const personalEvents = base.personalEvents.slice();
-  const scheduleOverrides = { ...base.scheduleOverrides };
-  switch (scenario.type) {
-    case "mark-unavailable":
-      dateOverrides[scenario.date] = { ...(dateOverrides[scenario.date] || {}), availability: "unavailable" };
-      break;
-    case "mark-free":
-      dateOverrides[scenario.date] = { ...(dateOverrides[scenario.date] || {}), availability: "free" };
-      break;
-    case "swap-routine":
-      dateOverrides[scenario.date] = { ...(dateOverrides[scenario.date] || {}), routineId: scenario.routineId };
-      break;
-    case "skip-workout":
-      scheduleOverrides[scenario.date] = "R";
-      break;
-    case "add-event":
-      personalEvents.push({ id: "whatif-temp", ...scenario.event, date: scenario.date, recurrence: null });
-      break;
-  }
-  return { dateOverrides, personalEvents, scheduleOverrides };
-}
-
-function computeDaySnapshot(dateStr, data, ctx) {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const dateObj = new Date(y, m - 1, d);
-  const trainingLetter = effectiveDayTypeForDate(dateObj, ctx.trainingStartDateStr, ctx.pattern, data.scheduleOverrides);
-  const plan = getPersonalDayPlan(dateStr, { routines: data.routines, weeklyRoutineMap: data.weeklyRoutineMap, routinePeriods: data.routinePeriods, dateOverrides: data.dateOverrides, events: data.personalEvents });
-  const advisory = trainingDayAdvisory(trainingLetter, plan);
-  return { trainingLetter, plan, advisory, status: personalDayStatus(plan) };
-}
-
-// Runs a scenario and returns before/after snapshots for its date, plus any
-// upcoming (30-day) conflicts the change would newly create or resolve.
-function runWhatIfSimulation(scenario, baseData, ctx) {
-  const before = computeDaySnapshot(scenario.date, baseData, ctx);
-  const overlay = applyWhatIfScenario(scenario, baseData);
-  const afterData = { ...baseData, ...overlay };
-  const after = computeDaySnapshot(scenario.date, afterData, ctx);
-  const commonConflictCtx = { trainingStartDateStr: ctx.trainingStartDateStr, pattern: ctx.pattern, routines: baseData.routines, weeklyRoutineMap: baseData.weeklyRoutineMap, routinePeriods: baseData.routinePeriods };
-  const beforeConflicts = findUpcomingTrainingConflicts(scenario.date, 30, { ...commonConflictCtx, scheduleOverrides: baseData.scheduleOverrides, dateOverrides: baseData.dateOverrides, events: baseData.personalEvents });
-  const afterConflicts = findUpcomingTrainingConflicts(scenario.date, 30, { ...commonConflictCtx, scheduleOverrides: overlay.scheduleOverrides, dateOverrides: overlay.dateOverrides, events: overlay.personalEvents });
-  const beforeDates = new Set(beforeConflicts.map((c) => c.date));
-  const afterDates = new Set(afterConflicts.map((c) => c.date));
-  return {
-    before, after,
-    newConflicts: afterConflicts.filter((c) => !beforeDates.has(c.date)),
-    resolvedConflicts: beforeConflicts.filter((c) => !afterDates.has(c.date)),
-  };
-}
-
-// ============================================================================
-// SCHEDULE IMPORT — a beginner-friendly, heuristic parser that turns
-// plain-English lines into draft Personal Events. It never guesses its way
-// into Routines or Routine Periods (too much to infer reliably); a detected
-// date RANGE always collapses to a single low-confidence one-time entry on
-// the start date, flagged for the user to edit or split up themselves.
-// Nothing is saved until the user reviews the "Here's what we understood"
-// list and explicitly confirms — low-confidence items start unchecked.
-// ============================================================================
-
-const WEEKDAY_ALIASES = {
-  sun: 0, sunday: 0, mon: 1, monday: 1, tue: 2, tues: 2, tuesday: 2, wed: 3, weds: 3, wednesday: 3,
-  thu: 4, thur: 4, thurs: 4, thursday: 4, fri: 5, friday: 5, sat: 6, saturday: 6,
-};
-const MONTH_ALIASES = {
-  jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3, may: 4,
-  jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7, sep: 8, sept: 8, september: 8,
-  oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11,
-};
-
-function detectWeekdays(line) {
-  const lower = line.toLowerCase();
-  if (/\bevery ?day\b|\bdaily\b/.test(lower)) return [0, 1, 2, 3, 4, 5, 6];
-  if (/\bweekdays?\b/.test(lower)) return [1, 2, 3, 4, 5];
-  if (/\bweekends?\b/.test(lower)) return [0, 6];
-  const found = new Set();
-  const tokens = lower.match(/[a-z]+/g) || [];
-  for (const t of tokens) {
-    const stripped = t.endsWith("s") ? t.slice(0, -1) : t;
-    if (WEEKDAY_ALIASES[t] !== undefined) found.add(WEEKDAY_ALIASES[t]);
-    else if (WEEKDAY_ALIASES[stripped] !== undefined) found.add(WEEKDAY_ALIASES[stripped]);
-  }
-  return [...found].sort();
-}
-
-function detectTimeRange(line) {
-  const re = /(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:-|–|to)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i;
-  const match = line.match(re);
-  if (!match) return null;
-  const h1 = match[1], min1 = match[2], ap1raw = match[3], h2 = match[4], min2 = match[5], ap2raw = match[6];
-  // If only one side has am/pm, infer the other from it (e.g. "6-7pm").
-  let ap1 = ap1raw, ap2 = ap2raw;
-  if (!ap1 && ap2) ap1 = ap2;
-  if (!ap2 && ap1) ap2 = ap1;
-  const fmt = (h, min, ap) => {
-    const hour = Number(h);
-    const suffix = ap ? ap.toLowerCase() : (hour < 8 ? "pm" : "am"); // rough guess when totally absent
-    return `${hour}${min ? ":" + min : ":00"} ${suffix.toUpperCase()}`;
-  };
-  return { start: fmt(h1, min1, ap1), end: fmt(h2, min2, ap2), hasAmPm: !!(ap1raw || ap2raw) };
-}
-
-function detectDate(line, referenceYear) {
-  const monthRe = /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*(?:-|–|to)\s*(\d{1,2})(?:st|nd|rd|th)?)?\b/i;
-  const m = line.match(monthRe);
-  if (m) {
-    const month = MONTH_ALIASES[m[1].toLowerCase()];
-    const startDay = Number(m[2]);
-    const endDay = m[3] ? Number(m[3]) : null;
-    const pad = (n) => String(n).padStart(2, "0");
-    const startDate = `${referenceYear}-${pad(month + 1)}-${pad(startDay)}`;
-    const endDate = endDay ? `${referenceYear}-${pad(month + 1)}-${pad(endDay)}` : null;
-    return { startDate, endDate, isRange: !!endDate };
-  }
-  const slashRe = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/;
-  const s = line.match(slashRe);
-  if (s) {
-    const month = Number(s[1]) - 1;
-    const day = Number(s[2]);
-    const year = s[3] ? (s[3].length === 2 ? 2000 + Number(s[3]) : Number(s[3])) : referenceYear;
-    const pad = (n) => String(n).padStart(2, "0");
-    return { startDate: `${year}-${pad(month + 1)}-${pad(day)}`, endDate: null, isRange: false };
-  }
-  return null;
-}
-
-function guessActivityType(line) {
-  const lower = line.toLowerCase();
-  const rules = [
-    [/\b(exam|test|final)\b/, "Exam"], [/\b(appointment|doctor|dentist)\b/, "Appointment"],
-    [/\b(work|shift)\b/, "Work"], [/\bschool\b/, "School"], [/\b(class|lecture)\b/, "Class"],
-    [/\b(study|homework)\b/, "Study"], [/\bproject\b/, "Project"],
-    [/\b(travel|flight|trip)\b/, "Travel"], [/\b(family|dinner)\b/, "Family"],
-    [/\b(gym|practice|training|workout)\b/, "Training Focus"],
-    [/\b(hobby|lesson|guitar|piano|music)\b/, "Hobby"], [/\b(recovery|rest)\b/, "Recovery"],
-    [/\bfree\b/, "Free Time"],
-  ];
-  for (const [re, label] of rules) if (re.test(lower)) return label;
-  return "Custom";
-}
-
-function guessPriority(line, activityType) {
-  const lower = line.toLowerCase();
-  if (/\b(exam|test|final|appointment|school|work)\b/.test(lower)) return "hard";
-  if (/\b(free|flexible)\b/.test(lower) || activityType === "Free Time") return "flexible";
-  if (activityType === "Hobby" || activityType === "Recovery") return "preference";
-  return "normal";
-}
-
-// Strips recognized date/time/weekday fragments to leave a title guess.
-function guessTitle(line, activityType) {
-  let cleaned = line
-    .replace(/\b(mon|tue|tues|wed|weds|thu|thur|thurs|fri|sat|sun)[a-z]*\.?,?\s*/gi, "")
-    .replace(/\bevery ?day\b|\bdaily\b|\bweekdays?\b|\bweekends?\b/gi, "")
-    .replace(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:\s*(?:-|–|to)\s*\d{1,2}(?:st|nd|rd|th)?)?/gi, "")
-    .replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, "")
-    .replace(/\d{1,2}(?::\d{2})?\s*(am|pm)?\s*(?:-|–|to)\s*\d{1,2}(?:\d{2})?\s*(am|pm)?/gi, "")
-    .replace(/[,:\-–\/]+/g, " ")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-  if (!cleaned) cleaned = activityType;
-  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-}
-
-function parseScheduleLine(line, referenceYear) {
-  const daysOfWeek = detectWeekdays(line);
-  const dateInfo = detectDate(line, referenceYear);
-  const timeInfo = detectTimeRange(line);
-  const activityType = guessActivityType(line);
-  const priority = guessPriority(line, activityType);
-  const title = guessTitle(line, activityType);
-  const notes = [];
-
-  let type, date = null, resolvedDaysOfWeek = [];
-  if (daysOfWeek.length) {
-    type = "recurring-event";
-    resolvedDaysOfWeek = daysOfWeek;
-  } else if (dateInfo) {
-    type = "one-time-event";
-    date = dateInfo.startDate;
-    if (dateInfo.isRange) notes.push(`Date range detected (through ${dateInfo.endDate}) — imported using the start date only; edit or add more entries as needed`);
-  } else {
-    type = "one-time-event";
-    date = null;
-    notes.push("No date or day detected — defaulting to today");
-  }
-
-  const allDay = !timeInfo;
-  if (!timeInfo) notes.push("No time detected — marked all day");
-  else if (!timeInfo.hasAmPm) notes.push("Time guessed without AM/PM in the text — double-check it");
-
-  const highConfidence = !!((type === "recurring-event" || (type === "one-time-event" && date)) && timeInfo && !(dateInfo && dateInfo.isRange));
-
-  return {
-    raw: line, type, title, activityType, priority, allDay,
-    start: timeInfo ? timeInfo.start : "", end: timeInfo ? timeInfo.end : "",
-    date: date || null, daysOfWeek: resolvedDaysOfWeek,
-    recurStartDate: null, recurEndDate: null,
-    confidence: highConfidence ? "high" : "low",
-    include: highConfidence,
-    notes,
-  };
-}
-
-function parseScheduleText(text, referenceYear) {
-  return (text || "").split("\n").map((l) => l.trim()).filter(Boolean).map((l) => parseScheduleLine(l, referenceYear));
-}
-
 // ============================================================================
 // DB — low-level Supabase-backed storage engine.
 //
@@ -1948,28 +1550,12 @@ const KV_PROGRAM_OVERRIDES = "programOverrides";
 const KV_EXERCISE_ORDER = "exerciseOrder";
 const KV_SCHEDULE_BLOCKS = "scheduleBlocks";
 const KV_SCHEDULE_OVERRIDES = "scheduleOverrides";
-const KV_PERSONAL_ROUTINES = "personalRoutines";
-const KV_WEEKLY_ROUTINE_MAP = "weeklyRoutineMap";
-const KV_ROUTINE_PERIODS = "routinePeriods";
-const KV_PERSONAL_EVENTS = "personalEvents";
-const KV_PERSONAL_OVERRIDES = "personalDateOverrides";
 
 // New/reset users start with no schedule blocks at all — the Schedule tab
 // shows "No blocks set for this day type yet" until they add their own.
 const DEFAULT_SCHEDULE_BLOCKS = {
   training: [],
   rest: [],
-};
-// New/reset users start with two named-but-empty routines (Weekday/Weekend)
-// mapped Mon-Fri / Sat-Sun, so the Personal tab has sensible defaults to
-// build on rather than nothing at all. 0 = Sunday .. 6 = Saturday.
-const DEFAULT_PERSONAL_ROUTINES = [
-  { id: "routine-weekday", name: "Weekday Routine", blocks: [] },
-  { id: "routine-weekend", name: "Weekend Routine", blocks: [] },
-];
-const DEFAULT_WEEKLY_ROUTINE_MAP = {
-  0: "routine-weekend", 1: "routine-weekday", 2: "routine-weekday", 3: "routine-weekday",
-  4: "routine-weekday", 5: "routine-weekday", 6: "routine-weekend",
 };
 const ACTIVE_ID = "active";
 
@@ -1979,7 +1565,6 @@ const DEFAULT_SETTINGS = {
   accentColor: null, // null = default crimson; else a "#rrggbb" hex string
   scheduleStartDate: todayDateStr(), // ISO date — day 1 of the training sequence cycle (see programState.pattern); reset to today whenever setup finishes
   exerciseUnits: {}, // { [exerciseId]: "kg" | "lb" }, missing entries default to kg
-  muscleDetailLevel: "standard", // "standard" | "advanced" | "anatomical" — see MUSCLE_DETAIL_LEVELS
 };
 
 const DEFAULT_PROGRAM_STATE = {
@@ -2050,26 +1635,6 @@ async function init() {
   const scheduleBlocks = await db.get(STORES.KV, KV_SCHEDULE_BLOCKS);
   if (!scheduleBlocks) {
     await db.put(STORES.KV, { key: KV_SCHEDULE_BLOCKS, data: DEFAULT_SCHEDULE_BLOCKS });
-  }
-  const personalRoutines = await db.get(STORES.KV, KV_PERSONAL_ROUTINES);
-  if (!personalRoutines) {
-    await db.put(STORES.KV, { key: KV_PERSONAL_ROUTINES, list: DEFAULT_PERSONAL_ROUTINES.map((r) => ({ ...r })) });
-  }
-  const weeklyRoutineMap = await db.get(STORES.KV, KV_WEEKLY_ROUTINE_MAP);
-  if (!weeklyRoutineMap) {
-    await db.put(STORES.KV, { key: KV_WEEKLY_ROUTINE_MAP, data: { ...DEFAULT_WEEKLY_ROUTINE_MAP } });
-  }
-  const routinePeriods = await db.get(STORES.KV, KV_ROUTINE_PERIODS);
-  if (!routinePeriods) {
-    await db.put(STORES.KV, { key: KV_ROUTINE_PERIODS, list: [] });
-  }
-  const personalEvents = await db.get(STORES.KV, KV_PERSONAL_EVENTS);
-  if (!personalEvents) {
-    await db.put(STORES.KV, { key: KV_PERSONAL_EVENTS, list: [] });
-  }
-  const personalOverrides = await db.get(STORES.KV, KV_PERSONAL_OVERRIDES);
-  if (!personalOverrides) {
-    await db.put(STORES.KV, { key: KV_PERSONAL_OVERRIDES, data: {} });
   }
   return { ok: true };
 }
@@ -2331,168 +1896,11 @@ async function setScheduleOverride(dateKeyStr, dayTypeOrNull) {
 }
 
 // ---------------------------------------------------------------------------
-// Personal Schedule — Routines: reusable named day templates (time blocks +
-// priority), independent from the Training Schedule above. Deleting a
-// routine clears any dangling references to it (weekly map entries, routine
-// periods) rather than leaving other records pointing at a ghost id.
-// ---------------------------------------------------------------------------
-
-async function getPersonalRoutines() {
-  const rec = await db.get(STORES.KV, KV_PERSONAL_ROUTINES);
-  return rec ? rec.list : DEFAULT_PERSONAL_ROUTINES.map((r) => ({ ...r }));
-}
-
-async function savePersonalRoutine(routine) {
-  return saving(async () => {
-    const list = await getPersonalRoutines();
-    if (!routine.id) routine.id = uid();
-    const idx = list.findIndex((r) => r.id === routine.id);
-    if (idx >= 0) list[idx] = routine; else list.push(routine);
-    await db.put(STORES.KV, { key: KV_PERSONAL_ROUTINES, list });
-    return routine;
-  });
-}
-
-async function deletePersonalRoutine(id) {
-  return saving(async () => {
-    const list = (await getPersonalRoutines()).filter((r) => r.id !== id);
-    await db.put(STORES.KV, { key: KV_PERSONAL_ROUTINES, list });
-
-    const mapRec = await db.get(STORES.KV, KV_WEEKLY_ROUTINE_MAP);
-    const map = mapRec ? { ...mapRec.data } : { ...DEFAULT_WEEKLY_ROUTINE_MAP };
-    let mapChanged = false;
-    for (const dow of Object.keys(map)) {
-      if (map[dow] === id) { map[dow] = null; mapChanged = true; }
-    }
-    if (mapChanged) await db.put(STORES.KV, { key: KV_WEEKLY_ROUTINE_MAP, data: map });
-
-    const periods = (await getRoutinePeriods()).filter((p) => p.routineId !== id);
-    await db.put(STORES.KV, { key: KV_ROUTINE_PERIODS, list: periods });
-
-    return list;
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Personal Schedule — Weekly base assignment: which routine applies to each
-// day of the week (0=Sun..6=Sat) by default. This is the fallback every date
-// resolves to unless a Routine Period or one-date override says otherwise.
-// ---------------------------------------------------------------------------
-
-async function getWeeklyRoutineMap() {
-  const rec = await db.get(STORES.KV, KV_WEEKLY_ROUTINE_MAP);
-  return rec ? { ...rec.data } : { ...DEFAULT_WEEKLY_ROUTINE_MAP };
-}
-
-async function setWeeklyRoutineMap(dow, routineIdOrNull) {
-  return saving(async () => {
-    const current = await getWeeklyRoutineMap();
-    current[dow] = routineIdOrNull;
-    await db.put(STORES.KV, { key: KV_WEEKLY_ROUTINE_MAP, data: current });
-    return current;
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Personal Schedule — Routine Periods: temporary date-range routine swaps
-// (e.g. "Exam Week" Sept 8-12) that override the weekly default for just
-// that range, without touching the weekly assignment itself.
-// ---------------------------------------------------------------------------
-
-async function getRoutinePeriods() {
-  const rec = await db.get(STORES.KV, KV_ROUTINE_PERIODS);
-  return rec ? rec.list : [];
-}
-
-async function addRoutinePeriod(period) {
-  return saving(async () => {
-    const list = await getRoutinePeriods();
-    period.id = period.id || uid();
-    list.push(period);
-    await db.put(STORES.KV, { key: KV_ROUTINE_PERIODS, list });
-    return period;
-  });
-}
-
-async function deleteRoutinePeriod(id) {
-  return saving(async () => {
-    const list = (await getRoutinePeriods()).filter((p) => p.id !== id);
-    await db.put(STORES.KV, { key: KV_ROUTINE_PERIODS, list });
-    return list;
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Personal Schedule — Events: recurring or one-time life events (class,
-// exam, appointment, travel, family, hobby, etc.) layered on top of
-// whichever routine governs a given date.
-// ---------------------------------------------------------------------------
-
-async function getPersonalEvents() {
-  const rec = await db.get(STORES.KV, KV_PERSONAL_EVENTS);
-  return rec ? rec.list : [];
-}
-
-async function savePersonalEvent(event) {
-  return saving(async () => {
-    const list = await getPersonalEvents();
-    if (!event.id) event.id = uid();
-    const idx = list.findIndex((e) => e.id === event.id);
-    if (idx >= 0) list[idx] = event; else list.push(event);
-    await db.put(STORES.KV, { key: KV_PERSONAL_EVENTS, list });
-    return event;
-  });
-}
-
-async function deletePersonalEvent(id) {
-  return saving(async () => {
-    const list = (await getPersonalEvents()).filter((e) => e.id !== id);
-    await db.put(STORES.KV, { key: KV_PERSONAL_EVENTS, list });
-    return list;
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Personal Schedule — per-date overrides: swap the routine, force the day
-// free/unavailable, or assign a focus, for one specific date only. Storing
-// these keyed by literal date (rather than as a day-of-week rule) is what
-// guarantees changing one Wednesday never touches any other Wednesday.
-// ---------------------------------------------------------------------------
-
-async function getPersonalDateOverrides() {
-  const rec = await db.get(STORES.KV, KV_PERSONAL_OVERRIDES);
-  return rec ? rec.data : {};
-}
-
-async function setPersonalDateOverride(dateKeyStr, patchOrNull) {
-  return saving(async () => {
-    const current = await getPersonalDateOverrides();
-    const updated = { ...current };
-    if (patchOrNull === null) {
-      delete updated[dateKeyStr];
-    } else {
-      const merged = { ...(updated[dateKeyStr] || {}), ...patchOrNull };
-      // Drop null/undefined fields entirely rather than storing them, so
-      // clearing just one field (e.g. availability) never leaves a stale
-      // empty key behind and never disturbs the other fields on that date.
-      Object.keys(merged).forEach((k) => { if (merged[k] === null || merged[k] === undefined) delete merged[k]; });
-      if (Object.keys(merged).length) updated[dateKeyStr] = merged;
-      else delete updated[dateKeyStr];
-    }
-    await db.put(STORES.KV, { key: KV_PERSONAL_OVERRIDES, data: updated });
-    return updated;
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Export / Import / Reset
 // ---------------------------------------------------------------------------
 
 async function exportAllData() {
-  const [
-    workouts, active, settings, programState, meta, customExercises, programOverrides, exerciseOrder,
-    scheduleBlocks, scheduleOverrides, personalRoutines, weeklyRoutineMap, routinePeriods, personalEvents, personalDateOverrides,
-  ] = await Promise.all([
+  const [workouts, active, settings, programState, meta, customExercises, programOverrides, exerciseOrder, scheduleBlocks, scheduleOverrides] = await Promise.all([
     getWorkouts(),
     getActiveWorkout(),
     getSettings(),
@@ -2503,11 +1911,6 @@ async function exportAllData() {
     getExerciseOrder(),
     getScheduleBlocks(),
     getScheduleOverrides(),
-    getPersonalRoutines(),
-    getWeeklyRoutineMap(),
-    getRoutinePeriods(),
-    getPersonalEvents(),
-    getPersonalDateOverrides(),
   ]);
 
   return {
@@ -2522,11 +1925,6 @@ async function exportAllData() {
     exerciseOrder,
     scheduleBlocks,
     scheduleOverrides,
-    personalRoutines,
-    weeklyRoutineMap,
-    routinePeriods,
-    personalEvents,
-    personalDateOverrides,
     exerciseDefinitions: allExerciseDefs(),
   };
 }
@@ -2595,12 +1993,6 @@ async function importAllData(raw) {
 
     await db.put(STORES.KV, { key: KV_SCHEDULE_OVERRIDES, data: (data.scheduleOverrides && typeof data.scheduleOverrides === "object") ? data.scheduleOverrides : {} });
 
-    await db.put(STORES.KV, { key: KV_PERSONAL_ROUTINES, list: Array.isArray(data.personalRoutines) ? data.personalRoutines : DEFAULT_PERSONAL_ROUTINES.map((r) => ({ ...r })) });
-    await db.put(STORES.KV, { key: KV_WEEKLY_ROUTINE_MAP, data: (data.weeklyRoutineMap && typeof data.weeklyRoutineMap === "object") ? data.weeklyRoutineMap : { ...DEFAULT_WEEKLY_ROUTINE_MAP } });
-    await db.put(STORES.KV, { key: KV_ROUTINE_PERIODS, list: Array.isArray(data.routinePeriods) ? data.routinePeriods : [] });
-    await db.put(STORES.KV, { key: KV_PERSONAL_EVENTS, list: Array.isArray(data.personalEvents) ? data.personalEvents : [] });
-    await db.put(STORES.KV, { key: KV_PERSONAL_OVERRIDES, data: (data.personalDateOverrides && typeof data.personalDateOverrides === "object") ? data.personalDateOverrides : {} });
-
     await db.put(STORES.KV, { key: KV_META, schemaVersion: SCHEMA_VERSION, lastBackupAt: (await getMeta()).lastBackupAt });
 
     return { ok: true };
@@ -2618,11 +2010,6 @@ async function resetAllData() {
     await db.put(STORES.KV, { key: KV_EXERCISE_ORDER, data: {} });
     await db.put(STORES.KV, { key: KV_SCHEDULE_BLOCKS, data: DEFAULT_SCHEDULE_BLOCKS });
     await db.put(STORES.KV, { key: KV_SCHEDULE_OVERRIDES, data: {} });
-    await db.put(STORES.KV, { key: KV_PERSONAL_ROUTINES, list: DEFAULT_PERSONAL_ROUTINES.map((r) => ({ ...r })) });
-    await db.put(STORES.KV, { key: KV_WEEKLY_ROUTINE_MAP, data: { ...DEFAULT_WEEKLY_ROUTINE_MAP } });
-    await db.put(STORES.KV, { key: KV_ROUTINE_PERIODS, list: [] });
-    await db.put(STORES.KV, { key: KV_PERSONAL_EVENTS, list: [] });
-    await db.put(STORES.KV, { key: KV_PERSONAL_OVERRIDES, data: {} });
     await db.put(STORES.KV, { key: KV_META, schemaVersion: SCHEMA_VERSION, lastBackupAt: null });
   });
 }
@@ -2637,11 +2024,6 @@ const storage = {
   getExerciseOrder, setExerciseOrder,
   getScheduleBlocks, setScheduleBlocks,
   getScheduleOverrides, setScheduleOverride,
-  getPersonalRoutines, savePersonalRoutine, deletePersonalRoutine,
-  getWeeklyRoutineMap, setWeeklyRoutineMap,
-  getRoutinePeriods, addRoutinePeriod, deleteRoutinePeriod,
-  getPersonalEvents, savePersonalEvent, deletePersonalEvent,
-  getPersonalDateOverrides, setPersonalDateOverride,
   exportAllData, markBackupComplete, importAllData, resetAllData,
 };
 function applyTheme(theme) {
@@ -2755,6 +2137,158 @@ function closeAnyModal() {
   modalRoot.innerHTML = "";
 }
 
+// ---------------------------------------------------------------------------
+// Muscle targeting editor — lets the user pick a muscle, tick any number of
+// its target areas, add their own custom target area, and tag additional
+// muscles beyond the primary one. Resolves to the new `muscles` array, or
+// null if cancelled. Nothing here is hard-coded to a specific exercise —
+// the same editor is used for every Add/Edit flow.
+// ---------------------------------------------------------------------------
+function openMuscleEditorModal(initialMuscles) {
+  return new Promise((resolve) => {
+    let working = sanitizeMuscleEntries(initialMuscles).map((m) => ({ muscle: m.muscle, areas: m.areas.map((a) => ({ ...a })) }));
+    let addingAreaForIdx = null;
+
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    modalRoot.appendChild(overlay);
+
+    function firstUnusedMuscle() {
+      const used = new Set(working.map((m) => m.muscle));
+      const next = MUSCLE_GROUPS.find((m) => !used.has(m.key) && m.key !== "other");
+      return next ? next.key : "other";
+    }
+
+    function blockHtml(m, i) {
+      const presets = targetAreaOptions(m.muscle);
+      const presetKeys = new Set(presets.map((a) => a.key));
+      const customAreas = m.areas.filter((a) => a.custom || !presetKeys.has(a.key));
+      const isChecked = (key) => m.areas.some((a) => a.key === key);
+      const areaRows = [
+        ...presets.map((a) => ({ key: a.key, label: a.label, custom: false, group: a.group || null })),
+        ...customAreas.map((a) => ({ ...a, group: null })),
+      ];
+      // Groups areas under a small header when the muscle's taxonomy defines
+      // one (e.g. Back's Lats / Upper Back / Erectors) — purely a display
+      // aid for scanning a longer list; every area still counts toward
+      // volume independently, grouped or not.
+      const groups = [];
+      const groupIndex = new Map();
+      for (const a of areaRows) {
+        const g = a.group;
+        if (!groupIndex.has(g)) { groupIndex.set(g, []); groups.push(g); }
+        groupIndex.get(g).push(a);
+      }
+      const checkboxHtml = (a) => `
+        <label style="display:flex; align-items:center; gap:9px; font-size:14px;">
+          <input type="checkbox" data-act="toggle-area" data-idx="${i}" data-key="${escapeHtml(a.key)}" data-label="${escapeHtml(a.label)}" data-custom="${a.custom ? "true" : "false"}" ${isChecked(a.key) ? "checked" : ""}>
+          ${escapeHtml(a.label)}
+        </label>`;
+      const areaListHtml = groups.map((g, gi) => `
+        ${g ? `<div class="text-faint" style="font-size:10.5px; text-transform:uppercase; letter-spacing:0.05em; margin:${gi === 0 ? "0" : "10px"} 0 2px;">${escapeHtml(g)}</div>` : ""}
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          ${groupIndex.get(g).map(checkboxHtml).join("")}
+        </div>`).join("");
+      return `
+        <div class="muscle-block" style="${i > 0 ? "border-top:1px solid var(--c-hairline); margin-top:16px; padding-top:16px;" : ""}">
+          <div class="flex-between" style="align-items:center;">
+            <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--c-off-faint);">${i === 0 ? "Muscle" : "Additional Muscle"}</label>
+            ${working.length > 1 ? `<button type="button" class="link-btn" data-act="remove-muscle" data-idx="${i}" style="color:var(--c-crimson-bright); font-size:12px;">Remove</button>` : ""}
+          </div>
+          <select data-act="pick-muscle" data-idx="${i}" style="width:100%; margin-top:6px; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:10px; font-size:14px;">
+            ${MUSCLE_GROUPS.map((g) => `<option value="${g.key}" ${g.key === m.muscle ? "selected" : ""}>${escapeHtml(g.label)}</option>`).join("")}
+          </select>
+          ${areaRows.length || m.muscle !== "other" ? `
+            <div style="margin-top:12px;">
+              <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--c-off-faint);">Target Areas</label>
+              <div style="margin-top:8px;">${areaListHtml}</div>
+            </div>` : ""}
+          ${addingAreaForIdx === i
+            ? `<div style="display:flex; gap:6px; margin-top:10px;">
+                 <input type="text" id="new-area-input" placeholder="e.g. Rotator Cuff" style="flex:1; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:8px 10px; font-size:13px;">
+                 <button type="button" class="btn btn-primary" data-act="confirm-add-area" data-idx="${i}" style="padding:8px 14px; font-size:13px;">Add</button>
+               </div>`
+            : `<button type="button" class="link-btn" data-act="start-add-area" data-idx="${i}" style="margin-top:10px; font-size:12.5px;">+ Add Target Area</button>`}
+        </div>`;
+    }
+
+    function render() {
+      overlay.innerHTML = `
+        <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="muscle-modal-title">
+          <h3 id="muscle-modal-title">What does this exercise target?</h3>
+          <div id="muscle-blocks">${working.map(blockHtml).join("")}</div>
+          <button type="button" class="link-btn" data-act="add-muscle" style="margin-top:16px; font-size:13px;">+ Add Muscle</button>
+          <div class="btn-row" style="margin-top:20px;">
+            <button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button>
+            <button class="btn btn-primary" data-act="save" type="button">Save</button>
+          </div>
+        </div>`;
+      wire();
+      if (addingAreaForIdx !== null) qs("#new-area-input", overlay)?.focus();
+    }
+
+    function wire() {
+      qsa('[data-act="pick-muscle"]', overlay).forEach((sel) => {
+        sel.addEventListener("change", () => {
+          working[Number(sel.dataset.idx)] = { muscle: sel.value, areas: [] };
+          addingAreaForIdx = null;
+          render();
+        });
+      });
+      qsa('[data-act="toggle-area"]', overlay).forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const entry = working[Number(cb.dataset.idx)];
+          const key = cb.dataset.key;
+          if (cb.checked) {
+            if (!entry.areas.some((a) => a.key === key)) entry.areas.push({ key, label: cb.dataset.label, custom: cb.dataset.custom === "true" });
+          } else {
+            entry.areas = entry.areas.filter((a) => a.key !== key);
+          }
+        });
+      });
+      qsa('[data-act="start-add-area"]', overlay).forEach((btn) => {
+        btn.addEventListener("click", () => { addingAreaForIdx = Number(btn.dataset.idx); render(); });
+      });
+      qsa('[data-act="confirm-add-area"]', overlay).forEach((btn) => {
+        const idx = Number(btn.dataset.idx);
+        const commit = () => {
+          const input = qs("#new-area-input", overlay);
+          const label = (input?.value || "").trim();
+          addingAreaForIdx = null;
+          if (!label) { render(); return; }
+          const key = `custom-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${uid().slice(0, 5)}`;
+          working[idx].areas.push({ key, label, custom: true });
+          render();
+        };
+        btn.addEventListener("click", commit);
+        qs("#new-area-input", overlay)?.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); commit(); } });
+      });
+      qsa('[data-act="remove-muscle"]', overlay).forEach((btn) => {
+        btn.addEventListener("click", () => {
+          working.splice(Number(btn.dataset.idx), 1);
+          addingAreaForIdx = null;
+          render();
+        });
+      });
+      qs('[data-act="add-muscle"]', overlay).addEventListener("click", () => {
+        working.push({ muscle: firstUnusedMuscle(), areas: [] });
+        addingAreaForIdx = null;
+        render();
+      });
+      overlay.querySelector('[data-act="cancel"]').addEventListener("click", () => close(null));
+      overlay.querySelector('[data-act="save"]').addEventListener("click", () => close(sanitizeMuscleEntries(working)));
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
+    }
+
+    function close(result) {
+      overlay.remove();
+      resolve(result);
+    }
+
+    render();
+  });
+}
+
 // Lets the user override a single date's day type (or clear an existing
 // override to fall back to the repeating pattern). Resolves to:
 //   { action: "set", value: dayTypeKey|"R" } | { action: "clear" } | null
@@ -2790,97 +2324,6 @@ function scheduleOverrideModal({ dateLabel, patternLetter, currentOverride, dayT
   });
 }
 
-// Generic single-choice picker modal, used across the Personal Schedule /
-// Day View screens wherever the user picks one option from a short list.
-// Resolves to the chosen value, null if allowClear and the user picked
-// "clear", or undefined if cancelled.
-function pickOptionModal({ title, body, options, currentValue, allowClear = false, clearLabel = "Clear" }) {
-  return new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay";
-    overlay.innerHTML = `
-      <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="pick-modal-title">
-        <h3 id="pick-modal-title">${escapeHtml(title)}</h3>
-        ${body ? `<p class="text-faint" style="margin-top:0;">${escapeHtml(body)}</p>` : ""}
-        <div class="btn-row" style="flex-wrap:wrap; gap:8px; margin:14px 0;">
-          ${options.map((o) => `<button class="btn ${o.value === currentValue ? "btn-primary" : ""}" data-act="pick" data-value="${escapeHtml(o.value)}" type="button">${escapeHtml(o.label)}</button>`).join("")}
-        </div>
-        <div class="btn-row" style="margin-top:6px;">
-          ${allowClear ? `<button class="btn btn-ghost" data-act="clear" type="button">${escapeHtml(clearLabel)}</button>` : ""}
-          <button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button>
-        </div>
-      </div>`;
-    modalRoot.appendChild(overlay);
-
-    function close(result) { overlay.remove(); resolve(result); }
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(undefined); });
-    overlay.querySelector('[data-act="cancel"]').addEventListener("click", () => close(undefined));
-    overlay.querySelector('[data-act="clear"]')?.addEventListener("click", () => close(null));
-    overlay.querySelectorAll('[data-act="pick"]').forEach((btn) => {
-      btn.addEventListener("click", () => close(btn.dataset.value));
-    });
-  });
-}
-
-// Generic single text-field input modal (e.g. "Set a focus for this day").
-// Resolves to the entered string, or undefined if cancelled.
-function textInputModal({ title, label, placeholder = "", initialValue = "", confirmLabel = "Save" }) {
-  return new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay";
-    overlay.innerHTML = `
-      <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="text-modal-title">
-        <h3 id="text-modal-title">${escapeHtml(title)}</h3>
-        <div class="field" style="margin-top:10px; margin-bottom:0;">
-          ${label ? `<label>${escapeHtml(label)}</label>` : ""}
-          <input type="text" id="text-input-modal-field" value="${escapeHtml(initialValue)}" placeholder="${escapeHtml(placeholder)}">
-        </div>
-        <div class="btn-row" style="margin-top:16px;">
-          <button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button>
-          <button class="btn btn-primary" data-act="confirm" type="button">${escapeHtml(confirmLabel)}</button>
-        </div>
-      </div>`;
-    modalRoot.appendChild(overlay);
-    const input = overlay.querySelector("#text-input-modal-field");
-    setTimeout(() => input.focus(), 0);
-
-    function close(result) { overlay.remove(); resolve(result); }
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(undefined); });
-    overlay.querySelector('[data-act="cancel"]').addEventListener("click", () => close(undefined));
-    overlay.querySelector('[data-act="confirm"]').addEventListener("click", () => close(input.value));
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter") close(input.value); });
-  });
-}
-
-// Generic single date-field input modal (e.g. "Move this workout to...").
-// Resolves to the entered "YYYY-MM-DD" string, or undefined if cancelled.
-function dateInputModal({ title, body, label, initialValue }) {
-  return new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay";
-    overlay.innerHTML = `
-      <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="date-modal-title">
-        <h3 id="date-modal-title">${escapeHtml(title)}</h3>
-        ${body ? `<p class="text-faint" style="margin-top:0;">${escapeHtml(body)}</p>` : ""}
-        <div class="field" style="margin-top:10px; margin-bottom:0;">
-          ${label ? `<label>${escapeHtml(label)}</label>` : ""}
-          <input type="date" id="date-input-modal-field" value="${escapeHtml(initialValue || "")}">
-        </div>
-        <div class="btn-row" style="margin-top:16px;">
-          <button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button>
-          <button class="btn btn-primary" data-act="confirm" type="button">Next</button>
-        </div>
-      </div>`;
-    modalRoot.appendChild(overlay);
-    const input = overlay.querySelector("#date-input-modal-field");
-
-    function close(result) { overlay.remove(); resolve(result); }
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(undefined); });
-    overlay.querySelector('[data-act="cancel"]').addEventListener("click", () => close(undefined));
-    overlay.querySelector('[data-act="confirm"]').addEventListener("click", () => close(input.value || undefined));
-  });
-}
-
 // Wires the header save indicator to storage.js's onSaveStateChange stream.
 function initSaveIndicator(onSaveStateChange) {
   const indicator = document.getElementById("save-indicator");
@@ -2897,17 +2340,12 @@ function initSaveIndicator(onSaveStateChange) {
 function qs(sel, root = document) { return root.querySelector(sel); }
 function qsa(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
 async function dashboardRender(container, navigate) {
-  const [active, workouts, programState, settingsData, scheduleOverrides, personalRoutines, weeklyRoutineMap, routinePeriods, personalDateOverrides, personalEvents] = await Promise.all([
+  const [active, workouts, programState, settingsData, scheduleOverrides] = await Promise.all([
     storage.getActiveWorkout(),
     storage.getWorkouts(),
     storage.getProgramState(),
     storage.getSettings(),
     storage.getScheduleOverrides(),
-    storage.getPersonalRoutines(),
-    storage.getWeeklyRoutineMap(),
-    storage.getRoutinePeriods(),
-    storage.getPersonalDateOverrides(),
-    storage.getPersonalEvents(),
   ]);
 
   if (!programState.setupComplete) {
@@ -2925,20 +2363,6 @@ async function dashboardRender(container, navigate) {
   }
 
   const suggested = todaysScheduledType(settingsData, programState, scheduleOverrides);
-  const personalPlanToday = getPersonalDayPlan(todayDateStr(), {
-    routines: personalRoutines, weeklyRoutineMap, routinePeriods,
-    dateOverrides: personalDateOverrides, events: personalEvents,
-  });
-  const personalConflictToday = trainingConflictForDate(suggested, personalPlanToday);
-  // Only surface a note when it would actually change what the user does
-  // with the suggestion above — a normal, unremarkable day says nothing.
-  const personalNote = personalConflictToday
-    ? `<div class="hero-sub" style="color:var(--c-warn); margin-top:10px;">⚠ ${escapeHtml(personalConflictToday)}</div>`
-    : personalPlanToday.availabilityOverride === "unavailable"
-      ? `<div class="hero-sub" style="margin-top:10px;">You've marked today unavailable on your Personal Schedule.</div>`
-      : personalPlanToday.focus
-        ? `<div class="hero-sub" style="margin-top:10px;">Focus today: <strong>${escapeHtml(personalPlanToday.focus)}</strong></div>`
-        : "";
   const loggedWorkouts = workouts.filter((w) => w.status !== "abandoned");
   const streak = computeStreak(workouts);
   const totalVolume = workouts.reduce((sum, w) => sum + workoutVolume(w), 0);
@@ -2964,7 +2388,6 @@ async function dashboardRender(container, navigate) {
         <div class="hero-eyebrow">Today's Session</div>
         <div class="hero-title">${suggested === "R" ? "Rest Day" : "No Pattern Set"}</div>
         <div class="hero-sub">${suggested === "R" ? "Scheduled rest — recovery is part of the program. You can still start any workout manually." : "Set a training pattern in the Schedule tab to get daily suggestions."}</div>
-        ${personalNote}
         <div class="hero-actions">
           <button class="btn btn-ghost" data-act="pick-workout">Choose a Workout</button>
         </div>
@@ -2975,7 +2398,6 @@ async function dashboardRender(container, navigate) {
         <div class="hero-eyebrow">Today's Session</div>
         <div class="hero-title">${PROGRAM[suggested]?.label || suggested}</div>
         <div class="hero-sub">Suggested by today's training pattern. You can start any workout manually at any time.</div>
-        ${personalNote}
         <div class="hero-actions">
           <button class="btn btn-primary" data-act="start-suggested" data-type="${suggested}">Start ${PROGRAM[suggested]?.label || suggested}</button>
           <button class="btn btn-ghost" data-act="pick-workout">Choose</button>
@@ -3238,7 +2660,7 @@ async function startNewWorkout(type) {
 
 function baseSet(index, unilateral) {
   return unilateral
-    ? { index, unilateral: true, leftWeightKg: null, leftReps: null, rightWeightKg: null, rightReps: null, weightUnit: null, rir: null, completed: false, skipped: false, notes: "" }
+    ? { index, unilateral: true, leftWeightKg: null, leftReps: null, rightWeightKg: null, rightReps: null, weightUnit: null, leftRir: null, rightRir: null, completed: false, skipped: false, notes: "" }
     : { index, unilateral: false, weightKg: null, reps: null, weightUnit: null, rir: null, completed: false, skipped: false, notes: "" };
 }
 
@@ -3429,15 +2851,33 @@ function renderSetRow(entry, set, i, exerciseUnit) {
   `;
 }
 
-function renderRirRow(exerciseId, set, i) {
-  const chips = RIR_OPTIONS.map((opt) => `
-    <button type="button" class="chip-btn rir-chip ${set.rir === opt.value ? "active" : ""}" data-act="set-rir" data-exercise="${exerciseId}" data-set="${i}" data-rir="${opt.value}">${escapeHtml(opt.label)}</button>
+// Renders the row of RIR chip buttons (0/1/2) for one RIR value. actName is
+// the data-act used by the click handler; extraAttrs carries whatever
+// data-* attributes that handler needs to know which set (and, for a
+// unilateral set, which side) was tapped.
+function rirChipsHtml(actName, extraAttrs, currentValue) {
+  return RIR_OPTIONS.map((opt) => `
+    <button type="button" class="chip-btn rir-chip ${currentValue === opt.value ? "active" : ""}" data-act="${actName}" ${extraAttrs} data-rir="${opt.value}">${escapeHtml(opt.label)}</button>
   `).join("");
+}
 
+function renderRirRow(exerciseId, set, i) {
+  if (set.unilateral) {
+    return `
+      <div class="rir-row" data-exercise="${exerciseId}" data-set="${i}" data-side="left">
+        <span class="rir-label">L RIR</span>
+        ${rirChipsHtml("set-rir", `data-exercise="${exerciseId}" data-set="${i}" data-side="left"`, set.leftRir)}
+      </div>
+      <div class="rir-row" data-exercise="${exerciseId}" data-set="${i}" data-side="right">
+        <span class="rir-label">R RIR</span>
+        ${rirChipsHtml("set-rir", `data-exercise="${exerciseId}" data-set="${i}" data-side="right"`, set.rightRir)}
+      </div>
+    `;
+  }
   return `
     <div class="rir-row" data-exercise="${exerciseId}" data-set="${i}">
       <span class="rir-label">RIR</span>
-      ${chips}
+      ${rirChipsHtml("set-rir", `data-exercise="${exerciseId}" data-set="${i}"`, set.rir)}
     </div>
   `;
 }
@@ -3509,10 +2949,12 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
   // RIR chips and failure toggle
   qsa('[data-act="set-rir"]', container).forEach((btn) => {
     btn.addEventListener("click", () => {
-      const { exercise, set, rir } = btn.dataset;
+      const { exercise, set, rir, side } = btn.dataset;
       const entry = workout.exercises.find((e) => e.exerciseId === exercise);
       const s = entry.sets[Number(set)];
-      s.rir = s.rir === rir ? null : rir;
+      if (side === "left") s.leftRir = s.leftRir === rir ? null : rir;
+      else if (side === "right") s.rightRir = s.rightRir === rir ? null : rir;
+      else s.rir = s.rir === rir ? null : rir;
       storage.saveActiveWorkout(workout);
       updateRirRowUI(container, exercise, Number(set), s);
     });
@@ -3610,6 +3052,13 @@ function updateSetRowUI(container, exerciseId, setIndex, set) {
 }
 
 function updateRirRowUI(container, exerciseId, setIndex, set) {
+  if (set.unilateral) {
+    const rowL = qs(`.rir-row[data-exercise="${exerciseId}"][data-set="${setIndex}"][data-side="left"]`, container);
+    if (rowL) qsa('[data-act="set-rir"]', rowL).forEach((btn) => btn.classList.toggle("active", btn.dataset.rir === set.leftRir));
+    const rowR = qs(`.rir-row[data-exercise="${exerciseId}"][data-set="${setIndex}"][data-side="right"]`, container);
+    if (rowR) qsa('[data-act="set-rir"]', rowR).forEach((btn) => btn.classList.toggle("active", btn.dataset.rir === set.rightRir));
+    return;
+  }
   const row = qs(`.rir-row[data-exercise="${exerciseId}"][data-set="${setIndex}"]`, container);
   if (!row) return;
   qsa('[data-act="set-rir"]', row).forEach((btn) => {
@@ -3693,10 +3142,12 @@ function rewireExerciseCard(container, workout, exerciseId) {
   });
   qsa('[data-act="set-rir"]', card).forEach((btn) => {
     btn.addEventListener("click", () => {
-      const { exercise, set, rir } = btn.dataset;
+      const { exercise, set, rir, side } = btn.dataset;
       const entry = workout.exercises.find((e) => e.exerciseId === exercise);
       const s = entry.sets[Number(set)];
-      s.rir = s.rir === rir ? null : rir;
+      if (side === "left") s.leftRir = s.leftRir === rir ? null : rir;
+      else if (side === "right") s.rightRir = s.rightRir === rir ? null : rir;
+      else s.rir = s.rir === rir ? null : rir;
       storage.saveActiveWorkout(workout);
       updateRirRowUI(container, exercise, Number(set), s);
     });
@@ -4241,6 +3692,12 @@ function renderHistSetRow(entry, set, i, settings, editMode) {
 }
 
 function renderHistRirInfo(set) {
+  if (set.unilateral) {
+    const l = set.leftRir ? RIR_OPTIONS.find((o) => o.value === set.leftRir)?.label : null;
+    const r = set.rightRir ? RIR_OPTIONS.find((o) => o.value === set.rightRir)?.label : null;
+    if (!l && !r) return "";
+    return `<div class="text-faint" style="padding-left:34px; margin-top:-6px; margin-bottom:6px;">${escapeHtml(`RIR L ${l || "–"}  ·  R ${r || "–"}`)}</div>`;
+  }
   if (!set.rir) return "";
   const rirLabel = RIR_OPTIONS.find((o) => o.value === set.rir)?.label;
   if (!rirLabel) return "";
@@ -4248,13 +3705,22 @@ function renderHistRirInfo(set) {
 }
 
 function renderHistRirRow(set, i) {
-  const chips = RIR_OPTIONS.map((opt) => `
-    <button type="button" class="chip-btn rir-chip ${set.rir === opt.value ? "active" : ""}" data-act="hist-set-rir" data-set="${i}" data-rir="${opt.value}">${escapeHtml(opt.label)}</button>
-  `).join("");
+  if (set.unilateral) {
+    return `
+      <div class="rir-row" data-set="${i}" data-side="left">
+        <span class="rir-label">L RIR</span>
+        ${rirChipsHtml("hist-set-rir", `data-set="${i}" data-side="left"`, set.leftRir)}
+      </div>
+      <div class="rir-row" data-set="${i}" data-side="right">
+        <span class="rir-label">R RIR</span>
+        ${rirChipsHtml("hist-set-rir", `data-set="${i}" data-side="right"`, set.rightRir)}
+      </div>
+    `;
+  }
   return `
     <div class="rir-row" data-set="${i}">
       <span class="rir-label">RIR</span>
-      ${chips}
+      ${rirChipsHtml("hist-set-rir", `data-set="${i}"`, set.rir)}
     </div>
   `;
 }
@@ -4324,7 +3790,10 @@ function wireEditHandlers(container, workout, navigate, params) {
     qsa('[data-act="hist-set-rir"]', card).forEach((btn) => {
       btn.addEventListener("click", () => {
         const s = entry.sets[Number(btn.dataset.set)];
-        s.rir = s.rir === btn.dataset.rir ? null : btn.dataset.rir;
+        const { rir, side } = btn.dataset;
+        if (side === "left") s.leftRir = s.leftRir === rir ? null : rir;
+        else if (side === "right") s.rightRir = s.rightRir === rir ? null : rir;
+        else s.rir = s.rir === rir ? null : rir;
         persistEdit(workout);
         historyRenderDetail(container, navigate, params, { editMode: true });
       });
@@ -4392,7 +3861,7 @@ async function exercisesRenderList(container, navigate, query = "") {
           <div class="history-item" data-id="${d.id}" style="cursor:pointer;">
             <div class="h-body">
               <div class="h-title">${escapeHtml(d.name)} ${d.unilateral ? `<span class="badge badge-uni">Unilateral</span>` : ""}</div>
-              <div class="h-meta">${muscleGroupLabel(d.muscleGroup)}${d.secondaryMuscle ? ` + ${muscleGroupLabel(d.secondaryMuscle)}` : ""} · ${d.sets} programmed set${d.sets > 1 ? "s" : ""}${lastPerformed[d.id] ? ` · last ${formatDateShort(lastPerformed[d.id])}` : ""}</div>
+              <div class="h-meta">${escapeHtml(muscleSummaryText(d))} · ${d.sets} programmed set${d.sets > 1 ? "s" : ""}${lastPerformed[d.id] ? ` · last ${formatDateShort(lastPerformed[d.id])}` : ""}</div>
             </div>
             <div class="h-chevron">›</div>
           </div>`).join("")}
@@ -4442,7 +3911,7 @@ async function exercisesRenderDetail(container, navigate, params) {
     <button class="link-btn" data-act="back">‹ Exercises</button>
     <h1 style="font-size:22px; margin-top:10px;">${escapeHtml(def.name)}</h1>
     <div class="ex-sub" style="margin-top:6px; display:flex; gap:8px; align-items:center;">
-      <span class="text-faint">${def.sets} programmed sets · ${muscleGroupLabel(def.muscleGroup)}${def.secondaryMuscle ? ` + ${muscleGroupLabel(def.secondaryMuscle)}` : ""}</span>
+      <span class="text-faint">${def.sets} programmed sets · ${escapeHtml(muscleSummaryText(def))}</span>
       ${def.unilateral ? `<span class="badge badge-uni">Unilateral</span>` : ""}
     </div>
 
@@ -4645,37 +4114,13 @@ async function renderSchedule(container, navigate) {
     });
   }
 
-  const personalRoutines = await storage.getPersonalRoutines();
-  const weeklyRoutineMap = await storage.getWeeklyRoutineMap();
-  const routinePeriods = await storage.getRoutinePeriods();
-  const personalDateOverrides = await storage.getPersonalDateOverrides();
-  const personalEvents = await storage.getPersonalEvents();
-  const upcomingConflicts = findUpcomingTrainingConflicts(dateKey(today), 30, {
-    trainingStartDateStr: startDateStr, pattern, scheduleOverrides: overrides,
-    routines: personalRoutines, weeklyRoutineMap, routinePeriods, dateOverrides: personalDateOverrides, events: personalEvents,
-  });
-
   container.innerHTML = `
+    <h1 style="font-size:22px; margin:6px 0 16px;">Schedule</h1>
+
     <div class="section-title"><h2>Today — ${todayLetter ? (labels[todayLetter] || todayLetter) : "No pattern set"}${next7[0].isOverride ? ` <span class="text-faint" style="font-weight:400; font-size:12px;">(swapped)</span>` : ""}</h2></div>
     <div class="card">${todayBlocks.length ? todayBlocks.map((b) => scheduleBlockRow(b.time, b.label)).join("") : `<p class="text-faint" style="margin:0;">No blocks set for this day type yet — add some below.</p>`}</div>
 
-    ${upcomingConflicts.length ? `
-      <div class="section-title" style="margin-top:22px;"><h2>Upcoming Conflicts</h2></div>
-      <p class="text-faint" style="margin:-8px 0 10px;">Training days that land on a date you've marked unavailable, or that fall inside a temporary routine period like Exam Week — worth reviewing before they happen.</p>
-      <div class="card">
-        ${upcomingConflicts.map((c) => `
-          <div class="flex-between" style="padding:10px 0; border-top:1px solid var(--c-hairline); gap:10px;">
-            <span>
-              <strong>${escapeHtml(formatDateStrShort(c.date))}</strong> — ${escapeHtml(labels[c.trainingLetter] || c.trainingLetter)}
-              <span class="text-faint" style="display:block; font-size:11.5px;">${escapeHtml(c.advisory.message || (c.routineName ? `Covered by ${c.routineName}` : "Marked unavailable"))}</span>
-            </span>
-            <button class="link-btn" data-act="review-conflict" data-date="${c.date}" style="flex-shrink:0;">Review</button>
-          </div>
-        `).join("")}
-      </div>
-    ` : ""}
-
-    <div class="section-title" style="margin-top:22px;"><h2>Next 7 Days</h2></div>
+    <div class="section-title"><h2>Next 7 Days</h2></div>
     <p class="text-faint" style="margin:-8px 0 10px;">Tap a day to swap it for something else, just for that day.</p>
     <div class="card">
       ${next7.map(({ date, letter, key, isOverride }, i) => `
@@ -4759,17 +4204,6 @@ async function renderSchedule(container, navigate) {
 
   renderPatternEditor(container, navigate);
   renderScheduleEditor(container, navigate);
-
-  qsa('[data-act="review-conflict"]', container).forEach((btn) => {
-    btn.addEventListener("click", () => {
-      scheduleActiveTab = "day";
-      dayViewDate = btn.dataset.date;
-      // container here is #schedule-root-body — its parent is the root
-      // element renderScheduleRoot was originally given, so this re-renders
-      // the whole Schedule tab switched to Day View at the flagged date.
-      renderScheduleRoot(container.parentElement, navigate);
-    });
-  });
 
   qsa(".schedule-day-row", container).forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -5045,878 +4479,7 @@ function renderScheduleEditor(container, navigate) {
   });
 }
 
-// ============================================================================
-// PERSONAL SCHEDULE tab — Routines, Weekly assignment, Routine Periods, and
-// Events. Stacked as scrollable sections, same convention as the Training
-// tab above. All mutations go straight to storage (no unsaved draft state)
-// except a routine's own block list, which is edited in a draft and only
-// written on "Save" — mirroring the Training tab's block editor.
-// ============================================================================
-
-function blankRoutineBlock() {
-  return { id: uid(), start: "", end: "", label: "", activityType: ACTIVITY_TYPE_SUGGESTIONS[0], priority: "normal" };
-}
-
-function activityTypeSelectHtml(selected, idAttr) {
-  return `<select ${idAttr ? `id="${idAttr}"` : ""} data-field="activityType" class="select-inline">
-    ${ACTIVITY_TYPE_SUGGESTIONS.map((o) => `<option value="${escapeHtml(o)}" ${o === selected ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}
-  </select>`;
-}
-function prioritySelectHtml(selected, idAttr) {
-  return `<select ${idAttr ? `id="${idAttr}"` : ""} data-field="priority" class="select-inline">
-    ${PRIORITY_LEVELS.map((p) => `<option value="${p.key}" ${p.key === selected ? "selected" : ""}>${escapeHtml(p.label)}</option>`).join("")}
-  </select>`;
-}
-
-let routineEditorOpenId = null;
-let routineBlockDrafts = {}; // routineId -> draft blocks array, only populated for the currently-open routine
-let newRoutineName = "";
-let periodFormDraft = null;  // { name, routineId, startDate, endDate } while the "add period" form is open
-let eventFormDraft = null;   // event-in-progress while the "add event" form is open
-let personalImportMode = null;   // null | "input" | "review"
-let personalImportRawText = "";
-let personalImportItems = null;  // array of parsed drafts, only set while mode === "review"
-
-const WEEKDAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-// One row in the "Here's what we understood" import review list — editable,
-// so a wrong guess (wrong day, wrong time) can be fixed before it's saved.
-function importItemRowHtml(item, idx) {
-  return `
-    <div class="card" style="margin-bottom:12px; ${item.confidence === "low" ? "border-color:var(--c-warn);" : ""}">
-      <div class="flex-between" style="margin-bottom:8px;">
-        <label style="display:flex; align-items:center; gap:8px; font-size:13px;">
-          <input type="checkbox" class="import-include" data-idx="${idx}" ${item.include ? "checked" : ""}>
-          <span class="text-faint" style="font-size:11px;">${item.confidence === "low" ? "Needs Review" : "High Confidence"}</span>
-        </label>
-        <button class="link-btn" data-act="import-remove" data-idx="${idx}" style="color:var(--c-crimson-bright); font-size:12px;">Discard</button>
-      </div>
-      <p class="text-faint" style="margin:0 0 10px; font-size:11px;">From: "${escapeHtml(item.raw)}"${item.notes.length ? " — " + item.notes.map(escapeHtml).join("; ") : ""}</p>
-      <div class="field" style="margin-bottom:10px;"><input type="text" class="import-field" data-idx="${idx}" data-field="title" value="${escapeHtml(item.title)}" placeholder="Title"></div>
-      <div style="display:flex; gap:8px; margin-bottom:10px;">
-        <div style="flex:1;">${activityTypeSelectHtml(item.activityType).replace("<select ", `<select class="import-field" data-idx="${idx}" `)}</div>
-        <div style="flex:1;">${prioritySelectHtml(item.priority).replace("<select ", `<select class="import-field" data-idx="${idx}" `)}</div>
-      </div>
-      <div class="toggle-row import-type-toggle" data-idx="${idx}" style="margin-bottom:10px;">
-        <button type="button" data-value="one-time-event" class="${item.type === "recurring-event" ? "" : "active"}">One-time</button>
-        <button type="button" data-value="recurring-event" class="${item.type === "recurring-event" ? "active" : ""}">Recurring</button>
-      </div>
-      ${item.type === "recurring-event" ? `
-        <div class="btn-row" style="flex-wrap:wrap; margin-bottom:10px;">
-          ${WEEKDAY_LABELS.map((label, dow) => `<button type="button" class="btn btn-sm import-dow-btn ${item.daysOfWeek.includes(dow) ? "btn-primary" : ""}" data-idx="${idx}" data-dow="${dow}">${label.slice(0, 3)}</button>`).join("")}
-        </div>
-        <div style="display:flex; gap:8px; margin-bottom:10px;">
-          <div class="field" style="flex:1;"><label>Starting</label><input type="date" class="import-field" data-idx="${idx}" data-field="recurStartDate" value="${item.recurStartDate || todayDateStr()}"></div>
-          <div class="field" style="flex:1;"><label>Until (optional)</label><input type="date" class="import-field" data-idx="${idx}" data-field="recurEndDate" value="${item.recurEndDate || ""}"></div>
-        </div>
-      ` : `
-        <div class="field" style="margin-bottom:10px;"><label>Date</label><input type="date" class="import-field" data-idx="${idx}" data-field="date" value="${item.date || todayDateStr()}"></div>
-      `}
-      <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:10px;">
-        <input type="checkbox" class="import-allday" data-idx="${idx}" ${item.allDay ? "checked" : ""}> All day
-      </label>
-      ${!item.allDay ? `
-        <div style="display:flex; gap:8px;">
-          <input type="text" class="import-field" data-idx="${idx}" data-field="start" value="${escapeHtml(item.start || "")}" placeholder="Start time" style="flex:1; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:8px 10px; font-size:12.5px;">
-          <input type="text" class="import-field" data-idx="${idx}" data-field="end" value="${escapeHtml(item.end || "")}" placeholder="End time" style="flex:1; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:8px 10px; font-size:12.5px;">
-        </div>
-      ` : ""}
-    </div>
-  `;
-}
-
-async function renderPersonalSchedule(container, navigate) {
-  const [routines, weeklyMap, periods, events] = await Promise.all([
-    storage.getPersonalRoutines(),
-    storage.getWeeklyRoutineMap(),
-    storage.getRoutinePeriods(),
-    storage.getPersonalEvents(),
-  ]);
-
-  const routineOptionsHtml = (selected) => `<option value="">— None —</option>` +
-    routines.map((r) => `<option value="${r.id}" ${r.id === selected ? "selected" : ""}>${escapeHtml(r.name)}</option>`).join("");
-
-  container.innerHTML = `
-    <div class="section-title"><h2>Import a Schedule</h2></div>
-    <p class="text-faint" style="margin:-8px 0 10px;">Paste a normal, human-written schedule — one item per line — and we'll turn it into events you can review before anything is added.</p>
-    <div class="card" style="margin-bottom:22px;">
-      ${personalImportMode === "input" ? `
-        <textarea id="import-textarea" rows="6" placeholder="Chemistry class Mon/Wed/Fri 10-11am&#10;Dentist appointment Sept 15 2pm-3pm&#10;Work every Saturday 9am-5pm" style="width:100%; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:8px; color:var(--c-off); padding:10px 12px; font-size:13px; font-family:inherit; resize:vertical; box-sizing:border-box;">${escapeHtml(personalImportRawText)}</textarea>
-        <div class="btn-row" style="margin-top:10px;">
-          <button class="btn btn-ghost" id="import-cancel" type="button">Cancel</button>
-          <button class="btn btn-primary" id="import-parse" type="button">Parse It</button>
-        </div>
-      ` : personalImportMode === "review" ? `
-        <p style="margin:0 0 12px; font-size:12.5px;">Here's what we understood — review, edit, and check off what you'd like to add. Items marked "Needs Review" start unchecked.</p>
-        ${personalImportItems.map((item, idx) => importItemRowHtml(item, idx)).join("")}
-        <div class="btn-row" style="margin-top:6px;">
-          <button class="btn btn-ghost" id="import-back" type="button">Start Over</button>
-          <button class="btn btn-primary" id="import-confirm" type="button">Add Checked Items</button>
-        </div>
-      ` : `<button class="btn" id="import-open" type="button">+ Import Schedule from Text</button>`}
-    </div>
-
-    <div class="section-title"><h2>Routines</h2></div>
-    <p class="text-faint" style="margin:-8px 0 10px;">Named day templates — Weekday, Weekend, or anything custom like Exam Week or Vacation. These are defaults, not locked-in dates.</p>
-    <div class="card">
-      ${routines.map((r) => `
-        <div style="border-top:1px solid var(--c-hairline);">
-          <button type="button" class="flex-between routine-row" data-id="${r.id}" style="width:100%; text-align:left; background:none; border:none; padding:12px 0; color:inherit; font:inherit; cursor:pointer;">
-            <span>${escapeHtml(r.name)}</span>
-            <span class="text-faint" style="font-size:12px;">${r.blocks.length} block${r.blocks.length === 1 ? "" : "s"} ${routineEditorOpenId === r.id ? "▲" : "▼"}</span>
-          </button>
-          ${routineEditorOpenId === r.id ? `<div id="routine-editor-body" style="padding-bottom:10px;"></div>` : ""}
-        </div>
-      `).join("")}
-    </div>
-    <div class="btn-row" style="margin:10px 0 4px;">
-      <input type="text" id="new-routine-name" placeholder="New routine name (e.g. Exam Week)" value="${escapeHtml(newRoutineName)}" style="flex:1; min-width:0; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:0 12px; font-size:13px;">
-      <button class="btn" id="add-routine-btn" type="button" style="flex:0 0 auto; width:auto;">+ Add</button>
-    </div>
-
-    <div class="section-title" style="margin-top:22px;"><h2>Weekly Routine</h2></div>
-    <p class="text-faint" style="margin:-8px 0 10px;">Which routine applies to each day of the week by default.</p>
-    <div class="card">
-      ${WEEKDAY_LABELS.map((label, dow) => `
-        <div class="flex-between" style="padding:9px 0; ${dow === 0 ? "" : "border-top:1px solid var(--c-hairline);"} gap:10px;">
-          <span>${label}</span>
-          <span style="width:150px; flex-shrink:0;">
-            <select data-dow="${dow}" class="weekly-routine-select select-inline">${routineOptionsHtml(weeklyMap[dow] ?? weeklyMap[String(dow)])}</select>
-          </span>
-        </div>
-      `).join("")}
-    </div>
-
-    <div class="section-title" style="margin-top:22px;"><h2>Temporary Routine Periods</h2></div>
-    <p class="text-faint" style="margin:-8px 0 10px;">Apply a routine to a date range without touching your weekly default — e.g. Exam Week, Sept 8–12.</p>
-    <div class="card">
-      ${periods.length ? periods.map((p) => {
-        const r = routines.find((x) => x.id === p.routineId);
-        return `<div class="flex-between" style="padding:10px 0; border-top:1px solid var(--c-hairline);">
-          <span>
-            <strong>${escapeHtml(p.name || (r ? r.name : "Period"))}</strong>
-            <span class="text-faint" style="display:block; font-size:12px;">${formatDateStrShort(p.startDate)} – ${formatDateStrShort(p.endDate)} · ${escapeHtml(r ? r.name : "—")}</span>
-          </span>
-          <button class="link-btn" data-act="delete-period" data-id="${p.id}" style="color:var(--c-crimson-bright); flex-shrink:0;">Remove</button>
-        </div>`;
-      }).join("") : `<p class="text-faint" style="margin:0;">No temporary routine periods set.</p>`}
-    </div>
-    <div class="card" style="margin-top:10px;">
-      ${periodFormDraft ? `
-        <div class="field"><label>Name</label><input type="text" id="period-name" value="${escapeHtml(periodFormDraft.name)}" placeholder="e.g. Exam Week"></div>
-        <div class="field"><label>Routine to use</label><select id="period-routine">${routineOptionsHtml(periodFormDraft.routineId)}</select></div>
-        <div style="display:flex; gap:8px;">
-          <div class="field" style="flex:1;"><label>Start date</label><input type="date" id="period-start" value="${periodFormDraft.startDate}"></div>
-          <div class="field" style="flex:1;"><label>End date</label><input type="date" id="period-end" value="${periodFormDraft.endDate}"></div>
-        </div>
-        <div class="btn-row"><button class="btn btn-ghost" id="period-cancel" type="button">Cancel</button><button class="btn btn-primary" id="period-save" type="button">Save Period</button></div>
-      ` : `<button class="btn" id="period-add-open" type="button">+ Add Routine Period</button>`}
-    </div>
-
-    <div class="section-title" style="margin-top:22px;"><h2>Events</h2></div>
-    <p class="text-faint" style="margin:-8px 0 10px;">Classes, exams, appointments, travel, family time — one-time or recurring, layered on top of your routine.</p>
-    <div class="card">
-      ${events.length ? events.map((e) => `
-        <div class="flex-between" style="padding:10px 0; border-top:1px solid var(--c-hairline); align-items:flex-start; gap:10px;">
-          <span>
-            <strong>${escapeHtml(e.title)}</strong>
-            <span class="text-faint" style="display:block; font-size:12px;">
-              ${e.recurrence ? `Weekly: ${e.recurrence.daysOfWeek.map((d) => WEEKDAY_LABELS[d].slice(0, 3)).join(", ")}` : formatDateStrShort(e.date)}
-              ${e.allDay ? " · All day" : (e.start ? ` · ${escapeHtml(e.start)}${e.end ? "–" + escapeHtml(e.end) : ""}` : "")}
-              · ${escapeHtml(e.activityType)} · ${escapeHtml(priorityLabel(e.priority))}
-            </span>
-          </span>
-          <button class="link-btn" data-act="delete-event" data-id="${e.id}" style="color:var(--c-crimson-bright); flex-shrink:0;">Remove</button>
-        </div>
-      `).join("") : `<p class="text-faint" style="margin:0;">No personal events yet.</p>`}
-    </div>
-    <div class="card" style="margin-top:10px;">
-      ${eventFormDraft ? eventFormHtml(eventFormDraft) : `<button class="btn" id="event-add-open" type="button">+ Add Event</button>`}
-    </div>
-  `;
-
-  qsa(".routine-row", container).forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.dataset.id;
-      routineEditorOpenId = routineEditorOpenId === id ? null : id;
-      if (routineEditorOpenId && !routineBlockDrafts[routineEditorOpenId]) {
-        const r = routines.find((x) => x.id === routineEditorOpenId);
-        routineBlockDrafts[routineEditorOpenId] = (r ? r.blocks : []).map((b) => ({ ...b }));
-      }
-      renderPersonalSchedule(container, navigate);
-    });
-  });
-  if (routineEditorOpenId) {
-    const body = qs("#routine-editor-body", container);
-    const routine = routines.find((r) => r.id === routineEditorOpenId);
-    if (body && routine) renderRoutineBlockEditor(body, container, navigate, routine);
-  }
-
-  qs("#add-routine-btn", container).addEventListener("click", async () => {
-    const input = qs("#new-routine-name", container);
-    const name = input.value.trim();
-    if (!name) { toast("Name the routine first"); return; }
-    await storage.savePersonalRoutine({ name, blocks: [] });
-    newRoutineName = "";
-    toast("Routine added");
-    renderPersonalSchedule(container, navigate);
-  });
-  qs("#new-routine-name", container).addEventListener("input", (e) => { newRoutineName = e.target.value; });
-
-  qsa(".weekly-routine-select", container).forEach((sel) => {
-    sel.addEventListener("change", async () => {
-      await storage.setWeeklyRoutineMap(Number(sel.dataset.dow), sel.value || null);
-      toast("Weekly routine updated");
-      renderPersonalSchedule(container, navigate);
-    });
-  });
-
-  qs("#period-add-open", container)?.addEventListener("click", () => {
-    periodFormDraft = { name: "", routineId: routines[0]?.id || "", startDate: todayDateStr(), endDate: todayDateStr() };
-    renderPersonalSchedule(container, navigate);
-  });
-  qs("#period-cancel", container)?.addEventListener("click", () => { periodFormDraft = null; renderPersonalSchedule(container, navigate); });
-  qs("#period-save", container)?.addEventListener("click", async () => {
-    const name = qs("#period-name", container).value.trim();
-    const routineId = qs("#period-routine", container).value;
-    const startDate = qs("#period-start", container).value;
-    const endDate = qs("#period-end", container).value;
-    if (!routineId) { toast("Pick a routine"); return; }
-    if (!startDate || !endDate || endDate < startDate) { toast("Check the date range"); return; }
-    const overlap = routinePeriodForDate(startDate, periods) || routinePeriodForDate(endDate, periods);
-    if (overlap) {
-      const ok = await confirmModal({
-        title: "Overlaps an existing period",
-        body: `This overlaps "${escapeHtml(overlap.name || "an existing period")}". The one you're adding now will take precedence on the overlapping dates — the older period stays saved underneath it. Continue?`,
-        confirmLabel: "Add anyway",
-      });
-      if (!ok) return;
-    }
-    await storage.addRoutinePeriod({ name, routineId, startDate, endDate });
-    periodFormDraft = null;
-    toast("Routine period added");
-    renderPersonalSchedule(container, navigate);
-  });
-  qsa('[data-act="delete-period"]', container).forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const ok = await confirmModal({ title: "Remove this period?", body: "Dates in this range will fall back to your weekly routine (or an older overlapping period).", confirmLabel: "Remove", danger: true });
-      if (!ok) return;
-      await storage.deleteRoutinePeriod(btn.dataset.id);
-      toast("Period removed");
-      renderPersonalSchedule(container, navigate);
-    });
-  });
-
-  qs("#event-add-open", container)?.addEventListener("click", () => {
-    eventFormDraft = { title: "", activityType: ACTIVITY_TYPE_SUGGESTIONS[0], priority: "normal", allDay: false, start: "", end: "", mode: "one-time", date: todayDateStr(), recurrence: null };
-    renderPersonalSchedule(container, navigate);
-  });
-  wireEventForm(container, navigate);
-  qsa('[data-act="delete-event"]', container).forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      await storage.deletePersonalEvent(btn.dataset.id);
-      toast("Event removed");
-      renderPersonalSchedule(container, navigate);
-    });
-  });
-
-  qs("#import-open", container)?.addEventListener("click", () => {
-    personalImportMode = "input";
-    renderPersonalSchedule(container, navigate);
-  });
-  qs("#import-cancel", container)?.addEventListener("click", () => {
-    personalImportMode = null; personalImportRawText = "";
-    renderPersonalSchedule(container, navigate);
-  });
-  qs("#import-textarea", container)?.addEventListener("input", (e) => { personalImportRawText = e.target.value; });
-  qs("#import-parse", container)?.addEventListener("click", () => {
-    const text = qs("#import-textarea", container).value;
-    if (!text.trim()) { toast("Paste something first"); return; }
-    personalImportItems = parseScheduleText(text, new Date().getFullYear());
-    personalImportMode = "review";
-    renderPersonalSchedule(container, navigate);
-  });
-  qs("#import-back", container)?.addEventListener("click", () => {
-    personalImportMode = "input";
-    renderPersonalSchedule(container, navigate);
-  });
-  qs("#import-confirm", container)?.addEventListener("click", async () => {
-    const included = personalImportItems.filter((it) => it.include);
-    if (!included.length) { toast("Nothing checked to add"); return; }
-    let skipped = 0;
-    for (const item of included) {
-      if (item.type === "recurring-event" && item.daysOfWeek.length === 0) { skipped++; continue; }
-      const payload = {
-        title: item.title.trim() || item.activityType,
-        activityType: item.activityType, priority: item.priority, allDay: item.allDay,
-        start: item.allDay ? "" : item.start, end: item.allDay ? "" : item.end,
-      };
-      if (item.type === "recurring-event") {
-        payload.date = null;
-        payload.recurrence = { daysOfWeek: item.daysOfWeek, startDate: item.recurStartDate || todayDateStr(), endDate: item.recurEndDate || null };
-      } else {
-        payload.date = item.date || todayDateStr();
-        payload.recurrence = null;
-      }
-      await storage.savePersonalEvent(payload);
-    }
-    const added = included.length - skipped;
-    toast(`${added} event${added === 1 ? "" : "s"} added${skipped ? `, ${skipped} skipped (no days selected)` : ""}`);
-    personalImportMode = null; personalImportRawText = ""; personalImportItems = null;
-    renderPersonalSchedule(container, navigate);
-  });
-
-  if (personalImportMode === "review" && personalImportItems) {
-    qsa(".import-include", container).forEach((cb) => {
-      cb.addEventListener("change", (e) => { personalImportItems[Number(cb.dataset.idx)].include = e.target.checked; });
-    });
-    qsa('[data-act="import-remove"]', container).forEach((btn) => {
-      btn.addEventListener("click", () => {
-        personalImportItems.splice(Number(btn.dataset.idx), 1);
-        renderPersonalSchedule(container, navigate);
-      });
-    });
-    qsa(".import-field", container).forEach((el) => {
-      const update = () => { personalImportItems[Number(el.dataset.idx)][el.dataset.field] = el.value; };
-      el.addEventListener("input", update);
-      el.addEventListener("change", update);
-    });
-    qsa(".import-allday", container).forEach((cb) => {
-      cb.addEventListener("change", (e) => {
-        personalImportItems[Number(cb.dataset.idx)].allDay = e.target.checked;
-        renderPersonalSchedule(container, navigate);
-      });
-    });
-    qsa(".import-type-toggle", container).forEach((toggle) => {
-      qsa("button", toggle).forEach((btn) => {
-        btn.addEventListener("click", () => {
-          personalImportItems[Number(toggle.dataset.idx)].type = btn.dataset.value;
-          renderPersonalSchedule(container, navigate);
-        });
-      });
-    });
-    qsa(".import-dow-btn", container).forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const item = personalImportItems[Number(btn.dataset.idx)];
-        const dow = Number(btn.dataset.dow);
-        const set = new Set(item.daysOfWeek);
-        if (set.has(dow)) set.delete(dow); else set.add(dow);
-        item.daysOfWeek = [...set].sort();
-        renderPersonalSchedule(container, navigate);
-      });
-    });
-  }
-}
-
-function renderRoutineBlockEditor(body, container, navigate, routine) {
-  const draft = routineBlockDrafts[routine.id];
-  body.innerHTML = `
-    ${draft.map((b, i) => `
-      <div class="routine-block-row" style="border-top:1px solid var(--c-hairline); padding:10px 0; display:flex; flex-direction:column; gap:6px;">
-        <div style="display:flex; gap:6px;">
-          <input type="text" data-idx="${i}" data-field="start" value="${escapeHtml(b.start || "")}" placeholder="Start (e.g. 8:00 AM)" style="flex:1; min-width:0; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:8px 8px; font-size:12.5px;">
-          <input type="text" data-idx="${i}" data-field="end" value="${escapeHtml(b.end || "")}" placeholder="End (optional)" style="flex:1; min-width:0; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:8px 8px; font-size:12.5px;">
-          <button class="link-btn" data-act="remove-block" data-idx="${i}" style="color:var(--c-crimson-bright); font-size:16px; padding:2px 6px; flex-shrink:0;">✕</button>
-        </div>
-        <input type="text" data-idx="${i}" data-field="label" value="${escapeHtml(b.label || "")}" placeholder="What happens" style="background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:8px 10px; font-size:13px;">
-        <div style="display:flex; gap:6px;">
-          <div style="flex:1;">${activityTypeSelectHtml(b.activityType).replace("<select ", `<select data-idx="${i}" `)}</div>
-          <div style="flex:1;">${prioritySelectHtml(b.priority).replace("<select ", `<select data-idx="${i}" `)}</div>
-        </div>
-      </div>
-    `).join("") || `<p class="text-faint" style="margin:10px 0;">No time blocks yet — add one below.</p>`}
-    <div class="btn-row" style="margin-top:10px;">
-      <button class="btn" data-act="add-block" type="button">+ Add Block</button>
-      <button class="btn btn-primary" data-act="save-blocks" type="button">Save</button>
-    </div>
-    <button class="btn btn-danger" data-act="delete-routine" type="button" style="width:100%; margin-top:10px;">Delete Routine</button>
-  `;
-
-  qsa("input[data-field]", body).forEach((input) => {
-    input.addEventListener("input", () => { draft[Number(input.dataset.idx)][input.dataset.field] = input.value; });
-  });
-  qsa("select[data-field]", body).forEach((sel) => {
-    sel.addEventListener("change", () => { draft[Number(sel.dataset.idx)][sel.dataset.field] = sel.value; });
-  });
-  qsa('[data-act="remove-block"]', body).forEach((btn) => {
-    btn.addEventListener("click", () => {
-      draft.splice(Number(btn.dataset.idx), 1);
-      renderRoutineBlockEditor(body, container, navigate, routine);
-    });
-  });
-  qs('[data-act="add-block"]', body).addEventListener("click", () => {
-    draft.push(blankRoutineBlock());
-    renderRoutineBlockEditor(body, container, navigate, routine);
-  });
-  qs('[data-act="save-blocks"]', body).addEventListener("click", async () => {
-    const cleaned = draft.map((b) => ({ ...b, label: (b.label || "").trim() })).filter((b) => b.label);
-    await storage.savePersonalRoutine({ ...routine, blocks: cleaned });
-    toast("Routine saved");
-    renderPersonalSchedule(container, navigate);
-  });
-  qs('[data-act="delete-routine"]', body).addEventListener("click", async () => {
-    const ok = await confirmModal({ title: `Delete "${routine.name}"?`, body: "Any day currently assigned to this routine (weekly default or a temporary period) will show no routine until you pick another.", confirmLabel: "Delete", danger: true });
-    if (!ok) return;
-    delete routineBlockDrafts[routine.id];
-    routineEditorOpenId = null;
-    await storage.deletePersonalRoutine(routine.id);
-    toast("Routine deleted");
-    renderPersonalSchedule(container, navigate);
-  });
-}
-
-function eventFormHtml(draft) {
-  return `
-    <div class="field"><label>Title</label><input type="text" id="event-title" value="${escapeHtml(draft.title)}" placeholder="e.g. Chemistry Exam"></div>
-    <div style="display:flex; gap:8px;">
-      <div class="field" style="flex:1;"><label>Type</label>${activityTypeSelectHtml(draft.activityType, "event-activity-type")}</div>
-      <div class="field" style="flex:1;"><label>Priority</label>${prioritySelectHtml(draft.priority, "event-priority")}</div>
-    </div>
-    <div class="toggle-row" id="event-mode-toggle" style="margin-bottom:14px;">
-      <button type="button" data-value="one-time" class="${draft.mode === "one-time" ? "active" : ""}">One-time</button>
-      <button type="button" data-value="recurring" class="${draft.mode === "recurring" ? "active" : ""}">Recurring</button>
-    </div>
-    ${draft.mode === "one-time" ? `
-      <div class="field"><label>Date</label><input type="date" id="event-date" value="${draft.date || todayDateStr()}"></div>
-    ` : `
-      <div class="field">
-        <label>Repeats on</label>
-        <div class="btn-row" style="flex-wrap:wrap;">
-          ${WEEKDAY_LABELS.map((label, dow) => `<button type="button" class="btn btn-sm event-dow-btn ${(draft.recurrence?.daysOfWeek || []).includes(dow) ? "btn-primary" : ""}" data-dow="${dow}">${label.slice(0, 3)}</button>`).join("")}
-        </div>
-      </div>
-      <div style="display:flex; gap:8px;">
-        <div class="field" style="flex:1;"><label>Starting</label><input type="date" id="event-recur-start" value="${draft.recurrence?.startDate || todayDateStr()}"></div>
-        <div class="field" style="flex:1;"><label>Until (optional)</label><input type="date" id="event-recur-end" value="${draft.recurrence?.endDate || ""}"></div>
-      </div>
-    `}
-    <div class="field">
-      <label><input type="checkbox" id="event-allday" ${draft.allDay ? "checked" : ""}> All day</label>
-    </div>
-    ${!draft.allDay ? `
-      <div style="display:flex; gap:8px;">
-        <div class="field" style="flex:1;"><label>Start time</label><input type="text" id="event-start-time" value="${escapeHtml(draft.start)}" placeholder="e.g. 2:00 PM"></div>
-        <div class="field" style="flex:1;"><label>End time</label><input type="text" id="event-end-time" value="${escapeHtml(draft.end)}" placeholder="optional"></div>
-      </div>
-    ` : ""}
-    <div class="btn-row"><button class="btn btn-ghost" id="event-cancel" type="button">Cancel</button><button class="btn btn-primary" id="event-save" type="button">Save Event</button></div>
-  `;
-}
-
-function wireEventForm(container, navigate) {
-  const modeToggle = qs("#event-mode-toggle", container);
-  if (!modeToggle) return;
-  qsa("button", modeToggle).forEach((btn) => {
-    btn.addEventListener("click", () => { eventFormDraft.mode = btn.dataset.value; renderPersonalSchedule(container, navigate); });
-  });
-  qsa(".event-dow-btn", container).forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const dow = Number(btn.dataset.dow);
-      if (!eventFormDraft.recurrence) eventFormDraft.recurrence = { daysOfWeek: [], startDate: todayDateStr(), endDate: null };
-      const set = new Set(eventFormDraft.recurrence.daysOfWeek);
-      if (set.has(dow)) set.delete(dow); else set.add(dow);
-      eventFormDraft.recurrence.daysOfWeek = [...set].sort();
-      renderPersonalSchedule(container, navigate);
-    });
-  });
-  qs("#event-allday", container)?.addEventListener("change", (e) => { eventFormDraft.allDay = e.target.checked; renderPersonalSchedule(container, navigate); });
-  qs("#event-cancel", container)?.addEventListener("click", () => { eventFormDraft = null; renderPersonalSchedule(container, navigate); });
-  qs("#event-save", container)?.addEventListener("click", async () => {
-    const title = qs("#event-title", container).value.trim();
-    if (!title) { toast("Give the event a title"); return; }
-    const activityType = qs("#event-activity-type", container).value;
-    const priority = qs("#event-priority", container).value;
-    const allDay = qs("#event-allday", container).checked;
-    const start = allDay ? "" : (qs("#event-start-time", container)?.value.trim() || "");
-    const end = allDay ? "" : (qs("#event-end-time", container)?.value.trim() || "");
-    const payload = { id: eventFormDraft.id, title, activityType, priority, allDay, start, end };
-    if (eventFormDraft.mode === "one-time") {
-      const date = qs("#event-date", container).value;
-      if (!date) { toast("Pick a date"); return; }
-      payload.date = date; payload.recurrence = null;
-    } else {
-      const daysOfWeek = eventFormDraft.recurrence?.daysOfWeek || [];
-      if (!daysOfWeek.length) { toast("Pick at least one day of the week"); return; }
-      const startDate = qs("#event-recur-start", container).value;
-      const endDate = qs("#event-recur-end", container).value || null;
-      payload.date = null; payload.recurrence = { daysOfWeek, startDate, endDate };
-    }
-    await storage.savePersonalEvent(payload);
-    eventFormDraft = null;
-    toast("Event saved");
-    renderPersonalSchedule(container, navigate);
-  });
-}
-
-// ============================================================================
-// DAY VIEW tab — the merged picture for one date: what the Training Schedule
-// says, what the Personal Schedule says (routine + events + focus), whether
-// they conflict, and quick actions to adjust just that date.
-// ============================================================================
-
-let dayViewDate = null;
-let dayViewExplainOpen = false;
-
-async function renderDayView(container, navigate) {
-  if (!dayViewDate) dayViewDate = todayDateStr();
-
-  const [settingsData, programState, trainingOverrides, routines, weeklyMap, periods, personalOverrides, events] = await Promise.all([
-    storage.getSettings(),
-    storage.getProgramState(),
-    storage.getScheduleOverrides(),
-    storage.getPersonalRoutines(),
-    storage.getWeeklyRoutineMap(),
-    storage.getRoutinePeriods(),
-    storage.getPersonalDateOverrides(),
-    storage.getPersonalEvents(),
-  ]);
-
-  const [y, m, d] = dayViewDate.split("-").map(Number);
-  const dateObj = new Date(y, m - 1, d);
-  const startDateStr = settingsData.scheduleStartDate || DEFAULT_SETTINGS.scheduleStartDate;
-  const pattern = programState.pattern || [];
-  const patternLetter = cycleLetterForDate(dateObj, startDateStr, pattern);
-  const trainingLetter = effectiveDayTypeForDate(dateObj, startDateStr, pattern, trainingOverrides);
-  const isPatternOverride = Object.prototype.hasOwnProperty.call(trainingOverrides, dayViewDate);
-  const trainingLabels = dayTypeLabels();
-  const plan = getPersonalDayPlan(dayViewDate, { routines, weeklyRoutineMap: weeklyMap, routinePeriods: periods, dateOverrides: personalOverrides, events });
-  const status = personalDayStatus(plan);
-  const advisory = trainingDayAdvisory(trainingLetter, plan);
-  const explainReasons = explainTrainingDay({ trainingLetter, isPatternOverride, plan, advisory });
-  const dateLabel = dateObj.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
-  const isToday = dayViewDate === todayDateStr();
-  const isRealWorkoutDay = !!trainingLetter && trainingLetter !== "R";
-
-  container.innerHTML = `
-    <div class="flex-between" style="margin-bottom:6px;">
-      <button class="link-btn" id="day-prev" type="button">‹ Prev</button>
-      <strong>${isToday ? "Today — " : ""}${escapeHtml(dateLabel)}</strong>
-      <button class="link-btn" id="day-next" type="button">Next ›</button>
-    </div>
-    ${!isToday ? `<div class="text-center" style="margin-bottom:14px;"><button class="link-btn" id="day-today" type="button">Jump to today</button></div>` : `<div style="margin-bottom:14px;"></div>`}
-
-    <div class="card" style="margin-bottom:14px;">
-      <div class="flex-between">
-        <span class="eyebrow">Training</span>
-        <span class="badge" style="color:var(${dayTypeColorVar(trainingLetter)}); border-color:var(${dayTypeColorVar(trainingLetter)});">${trainingLetter ? escapeHtml(trainingLabels[trainingLetter] || trainingLetter) : "–"}</span>
-      </div>
-      ${advisory.level === "blocked" ? `<p style="color:var(--c-warn); font-size:12.5px; margin:10px 0 0;">⚠ ${escapeHtml(advisory.message)}</p>` : ""}
-      ${advisory.level === "busy" ? `<p class="text-faint" style="font-size:12.5px; margin:10px 0 0;">${escapeHtml(advisory.message)}</p>` : ""}
-      <button class="link-btn" id="day-explain-toggle" type="button" style="margin-top:10px; font-size:12px;">${dayViewExplainOpen ? "Hide" : "Why is this scheduled here?"}</button>
-      ${dayViewExplainOpen ? `<ul style="margin:8px 0 0; padding-left:18px; font-size:12.5px; color:var(--c-off-dim); line-height:1.6;">${explainReasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("")}</ul>` : ""}
-    </div>
-
-    <div class="card" style="margin-bottom:14px;">
-      <div class="flex-between">
-        <span class="eyebrow">Personal — ${escapeHtml(plan.routine ? plan.routine.name : "No routine set")}</span>
-        <span class="badge">${escapeHtml(status)}</span>
-      </div>
-      <p class="text-faint" style="margin:8px 0 0; font-size:12px;">
-        ${plan.routineSource === "override" ? "Routine swapped for this date only" : plan.routineSource === "period" ? "From a temporary routine period" : "From your weekly default"}
-      </p>
-      ${plan.focus ? `<p style="margin:8px 0 0; font-size:13px;">Focus: <strong>${escapeHtml(plan.focus)}</strong></p>` : ""}
-    </div>
-
-    <div class="section-title"><h2>Timeline</h2></div>
-    <div class="card" style="margin-bottom:14px;">
-      ${plan.timeline.length ? plan.timeline.map((b) => `
-        <div style="padding:9px 0; border-top:1px solid var(--c-hairline);">
-          <div class="flex-between">
-            <span style="font-size:13px;">${escapeHtml(b.label || b.activityType || "")}</span>
-            <span class="badge" style="color:var(${priorityColorVar(b.priority)}); border-color:var(${priorityColorVar(b.priority)}); font-size:10px;">${escapeHtml(priorityLabel(b.priority))}</span>
-          </div>
-          <span class="text-faint" style="font-size:11.5px;">${b.allDay ? "All day" : [b.start, b.end].filter(Boolean).map(escapeHtml).join(" – ")} ${b.activityType ? "· " + escapeHtml(b.activityType) : ""} · ${b.source === "event" ? "event" : "routine"}</span>
-        </div>
-      `).join("") : `<p class="text-faint" style="margin:0;">Nothing on the personal schedule for this day.</p>`}
-    </div>
-
-    <div class="section-title"><h2>Personal Quick Actions</h2></div>
-    <div class="card" style="margin-bottom:14px;">
-      <div class="btn-row" style="flex-wrap:wrap; gap:8px;">
-        <button class="btn btn-sm" data-act="mark-free" type="button">I'm Free</button>
-        <button class="btn btn-sm" data-act="mark-unavailable" type="button">I'm Unavailable</button>
-        <button class="btn btn-sm" data-act="swap-routine" type="button">Use a Different Routine</button>
-        <button class="btn btn-sm" data-act="set-focus" type="button">Set Focus</button>
-        ${plan.isDateOverridden ? `<button class="btn btn-sm btn-ghost" data-act="reset-day" type="button">Reset to Default</button>` : ""}
-      </div>
-    </div>
-
-    <div class="section-title"><h2>Training Quick Actions</h2></div>
-    <div class="card">
-      <div class="btn-row" style="flex-wrap:wrap; gap:8px;">
-        <button class="btn btn-sm" data-act="change-workout" type="button">Change Workout</button>
-        ${isRealWorkoutDay ? `<button class="btn btn-sm" data-act="move-workout" type="button">Move Workout</button>` : ""}
-        ${isRealWorkoutDay ? `<button class="btn btn-sm btn-ghost" data-act="skip-workout" type="button">Skip This Workout</button>` : ""}
-        ${isPatternOverride ? `<button class="btn btn-sm btn-ghost" data-act="reset-training" type="button">Reset to Sequence</button>` : ""}
-      </div>
-      <p class="text-faint" style="margin:12px 0 0; font-size:11.5px;">Changes here only affect this date — your training sequence keeps repeating from where it was.</p>
-    </div>
-  `;
-
-  qs("#day-prev", container).addEventListener("click", () => { dayViewDate = addDaysToDateStr(dayViewDate, -1); renderDayView(container, navigate); });
-  qs("#day-next", container).addEventListener("click", () => { dayViewDate = addDaysToDateStr(dayViewDate, 1); renderDayView(container, navigate); });
-  qs("#day-today", container)?.addEventListener("click", () => { dayViewDate = todayDateStr(); renderDayView(container, navigate); });
-  qs("#day-explain-toggle", container).addEventListener("click", () => { dayViewExplainOpen = !dayViewExplainOpen; renderDayView(container, navigate); });
-
-  qs('[data-act="mark-free"]', container).addEventListener("click", async () => {
-    await storage.setPersonalDateOverride(dayViewDate, { availability: "free" });
-    toast("Marked free for this date");
-    renderDayView(container, navigate);
-  });
-  qs('[data-act="mark-unavailable"]', container).addEventListener("click", async () => {
-    await storage.setPersonalDateOverride(dayViewDate, { availability: "unavailable" });
-    toast("Marked unavailable for this date");
-    renderDayView(container, navigate);
-  });
-  qs('[data-act="reset-day"]', container)?.addEventListener("click", async () => {
-    await storage.setPersonalDateOverride(dayViewDate, null);
-    toast("Reset to default");
-    renderDayView(container, navigate);
-  });
-  qs('[data-act="swap-routine"]', container).addEventListener("click", async () => {
-    if (!routines.length) { toast("Add a routine first, in the Personal tab"); return; }
-    const result = await pickOptionModal({
-      title: "Use a different routine for this day only",
-      body: "This changes just this one date — your weekly default and any routine period stay untouched.",
-      options: routines.map((r) => ({ value: r.id, label: r.name })),
-      currentValue: plan.routine?.id || null,
-      allowClear: true,
-      clearLabel: "Reset to default",
-    });
-    if (result === undefined) return;
-    await storage.setPersonalDateOverride(dayViewDate, { routineId: result });
-    toast(result === null ? "Reset to default routine" : "Routine updated for this day");
-    renderDayView(container, navigate);
-  });
-  qs('[data-act="set-focus"]', container).addEventListener("click", async () => {
-    const value = await textInputModal({ title: "Set a focus for this day", label: "Focus", placeholder: "e.g. Exam Prep", initialValue: plan.focus || "" });
-    if (value === undefined) return;
-    await storage.setPersonalDateOverride(dayViewDate, { focus: value.trim() || null });
-    toast("Focus updated");
-    renderDayView(container, navigate);
-  });
-
-  qs('[data-act="change-workout"]', container).addEventListener("click", async () => {
-    if (!PROGRAM_DAY_TYPES.length) { toast("Finish Program Setup to unlock day types"); return; }
-    const result = await scheduleOverrideModal({
-      dateLabel, patternLetter, currentOverride: trainingOverrides[dayViewDate],
-      dayTypeOptions: PROGRAM_DAY_TYPES, labelsMap: trainingLabels,
-    });
-    if (!result) return;
-    await storage.setScheduleOverride(dayViewDate, result.action === "clear" ? null : result.value);
-    toast(result.action === "clear" ? "Reset to sequence" : "Workout updated for this day");
-    renderDayView(container, navigate);
-  });
-  qs('[data-act="reset-training"]', container)?.addEventListener("click", async () => {
-    await storage.setScheduleOverride(dayViewDate, null);
-    toast("Reset to sequence");
-    renderDayView(container, navigate);
-  });
-  qs('[data-act="skip-workout"]', container)?.addEventListener("click", async () => {
-    const ok = await confirmModal({ title: "Skip this workout?", body: "This date becomes a Rest day. Your sequence keeps repeating from where it was — nothing else shifts.", confirmLabel: "Skip It" });
-    if (!ok) return;
-    await storage.setScheduleOverride(dayViewDate, "R");
-    toast("Marked as Rest");
-    renderDayView(container, navigate);
-  });
-  qs('[data-act="move-workout"]', container)?.addEventListener("click", async () => {
-    const targetDate = await dateInputModal({
-      title: "Move this workout to...",
-      body: `Pick the date you'd rather train ${trainingLabels[trainingLetter] || trainingLetter} instead.`,
-      label: "New date",
-      initialValue: addDaysToDateStr(dayViewDate, 1),
-    });
-    if (!targetDate) return;
-    const preview = previewMoveWorkout(dayViewDate, targetDate, { trainingStartDateStr: startDateStr, pattern, scheduleOverrides: trainingOverrides });
-    if (preview.invalid) { toast("Pick a different date to move to"); return; }
-    const [ty, tm, td] = targetDate.split("-").map(Number);
-    const targetLabel = new Date(ty, tm - 1, td).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
-    const ok = await confirmModal({
-      title: "Preview this move",
-      body: `
-        <strong>${escapeHtml(dateLabel)}</strong> becomes <em>Rest</em>.<br>
-        <strong>${escapeHtml(targetLabel)}</strong> becomes <em>${escapeHtml(trainingLabels[preview.targetAfter] || preview.targetAfter)}</em>${preview.overwritesExistingWorkout ? `, replacing its currently-scheduled <em>${escapeHtml(trainingLabels[preview.targetBefore] || preview.targetBefore)}</em>` : ""}.
-        <br><br>Nothing else in your sequence shifts — this only changes these two dates.
-      `,
-      confirmLabel: "Apply Move",
-    });
-    if (!ok) return;
-    await storage.setScheduleOverride(preview.sourceDate, preview.sourceAfter);
-    await storage.setScheduleOverride(preview.targetDate, preview.targetAfter);
-    toast("Workout moved");
-    renderDayView(container, navigate);
-  });
-}
-
-// ============================================================================
-// WHAT-IF tab — test a hypothetical change and see its effect before
-// committing to anything. Nothing here writes to storage until "Apply".
-// ============================================================================
-
-let whatIfDate = null;
-let whatIfType = "mark-unavailable";
-let whatIfRoutineId = null;
-let whatIfEventDraft = null; // { title, activityType, priority, allDay, start, end } while type === "add-event"
-let whatIfResult = null;     // last runWhatIfSimulation() output, or null before running
-
-const WHAT_IF_SCENARIOS = [
-  { value: "mark-unavailable", label: "I can't do anything this day" },
-  { value: "mark-free", label: "I suddenly have the whole day free" },
-  { value: "swap-routine", label: "Use a different routine" },
-  { value: "skip-workout", label: "Skip the scheduled workout" },
-  { value: "add-event", label: "Add a one-time event" },
-];
-
-async function renderWhatIf(container, navigate) {
-  if (!whatIfDate) whatIfDate = todayDateStr();
-
-  const [settingsData, programState, trainingOverrides, routines, weeklyMap, periods, personalOverrides, events] = await Promise.all([
-    storage.getSettings(), storage.getProgramState(), storage.getScheduleOverrides(),
-    storage.getPersonalRoutines(), storage.getWeeklyRoutineMap(), storage.getRoutinePeriods(),
-    storage.getPersonalDateOverrides(), storage.getPersonalEvents(),
-  ]);
-  const startDateStr = settingsData.scheduleStartDate || DEFAULT_SETTINGS.scheduleStartDate;
-  const pattern = programState.pattern || [];
-  const trainingLabels = dayTypeLabels();
-  const baseData = { dateOverrides: personalOverrides, personalEvents: events, scheduleOverrides: trainingOverrides, routines, weeklyRoutineMap: weeklyMap, routinePeriods: periods };
-  const ctx = { trainingStartDateStr: startDateStr, pattern };
-
-  if (whatIfRoutineId === null && routines.length) whatIfRoutineId = routines[0].id;
-  if (!whatIfEventDraft) whatIfEventDraft = { title: "", activityType: ACTIVITY_TYPE_SUGGESTIONS[0], priority: "normal", allDay: false, start: "", end: "" };
-
-  container.innerHTML = `
-    <div class="section-title"><h2>Test a Scenario</h2></div>
-    <p class="text-faint" style="margin:-8px 0 10px;">Nothing changes until you review the result and choose to apply it.</p>
-    <div class="card" style="margin-bottom:16px;">
-      <div class="field"><label>Date</label><input type="date" id="whatif-date" value="${whatIfDate}"></div>
-      <div class="field">
-        <label>What if...</label>
-        <select id="whatif-type">${WHAT_IF_SCENARIOS.map((s) => `<option value="${s.value}" ${s.value === whatIfType ? "selected" : ""}>${escapeHtml(s.label)}</option>`).join("")}</select>
-      </div>
-      ${whatIfType === "swap-routine" ? `
-        <div class="field"><label>Routine to try</label><select id="whatif-routine">${routines.map((r) => `<option value="${r.id}" ${r.id === whatIfRoutineId ? "selected" : ""}>${escapeHtml(r.name)}</option>`).join("")}</select></div>
-      ` : ""}
-      ${whatIfType === "add-event" ? `
-        <div class="field"><label>Title</label><input type="text" id="whatif-event-title" value="${escapeHtml(whatIfEventDraft.title)}" placeholder="e.g. Family visit"></div>
-        <div style="display:flex; gap:8px;">
-          <div class="field" style="flex:1;"><label>Type</label>${activityTypeSelectHtml(whatIfEventDraft.activityType, "whatif-event-type")}</div>
-          <div class="field" style="flex:1;"><label>Priority</label>${prioritySelectHtml(whatIfEventDraft.priority, "whatif-event-priority")}</div>
-        </div>
-        <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:10px;"><input type="checkbox" id="whatif-event-allday" ${whatIfEventDraft.allDay ? "checked" : ""}> All day</label>
-        ${!whatIfEventDraft.allDay ? `
-          <div style="display:flex; gap:8px;">
-            <div class="field" style="flex:1;"><label>Start</label><input type="text" id="whatif-event-start" value="${escapeHtml(whatIfEventDraft.start)}" placeholder="e.g. 2:00 PM"></div>
-            <div class="field" style="flex:1;"><label>End</label><input type="text" id="whatif-event-end" value="${escapeHtml(whatIfEventDraft.end)}" placeholder="optional"></div>
-          </div>
-        ` : ""}
-      ` : ""}
-      <button class="btn btn-primary" id="whatif-run" type="button" style="width:100%; margin-top:4px;">Run Simulation</button>
-    </div>
-
-    ${whatIfResult ? `
-      <div class="section-title"><h2>Result</h2></div>
-      <div class="card" style="margin-bottom:12px;">
-        <div style="display:flex; gap:10px;">
-          <div style="flex:1;">
-            <div class="eyebrow">Before</div>
-            <p style="margin:6px 0 0; font-size:13px;">${escapeHtml(whatIfResult.before.trainingLetter ? (trainingLabels[whatIfResult.before.trainingLetter] || whatIfResult.before.trainingLetter) : "–")}</p>
-            <p class="text-faint" style="margin:2px 0 0; font-size:11.5px;">${escapeHtml(whatIfResult.before.status)}${whatIfResult.before.advisory.level !== "none" ? " · " + whatIfResult.before.advisory.level : ""}</p>
-          </div>
-          <div style="flex:1;">
-            <div class="eyebrow">After</div>
-            <p style="margin:6px 0 0; font-size:13px;">${escapeHtml(whatIfResult.after.trainingLetter ? (trainingLabels[whatIfResult.after.trainingLetter] || whatIfResult.after.trainingLetter) : "–")}</p>
-            <p class="text-faint" style="margin:2px 0 0; font-size:11.5px;">${escapeHtml(whatIfResult.after.status)}${whatIfResult.after.advisory.level !== "none" ? " · " + whatIfResult.after.advisory.level : ""}</p>
-          </div>
-        </div>
-        ${whatIfResult.after.advisory.message ? `<p style="color:var(${whatIfResult.after.advisory.level === "blocked" ? "--c-warn" : "--c-off-dim"}); font-size:12px; margin:12px 0 0;">${escapeHtml(whatIfResult.after.advisory.message)}</p>` : ""}
-      </div>
-      ${whatIfResult.newConflicts.length ? `
-        <div class="card" style="margin-bottom:12px; border-color:var(--c-warn);">
-          <p style="margin:0 0 6px; font-size:12.5px; font-weight:600;">This would create ${whatIfResult.newConflicts.length} new upcoming conflict${whatIfResult.newConflicts.length === 1 ? "" : "s"}:</p>
-          ${whatIfResult.newConflicts.map((c) => `<p class="text-faint" style="margin:2px 0; font-size:12px;">${escapeHtml(formatDateStrShort(c.date))} — ${escapeHtml(trainingLabels[c.trainingLetter] || c.trainingLetter)}</p>`).join("")}
-        </div>
-      ` : ""}
-      ${whatIfResult.resolvedConflicts.length ? `
-        <div class="card" style="margin-bottom:12px;">
-          <p style="margin:0 0 6px; font-size:12.5px; font-weight:600;">This would resolve ${whatIfResult.resolvedConflicts.length} existing conflict${whatIfResult.resolvedConflicts.length === 1 ? "" : "s"}:</p>
-          ${whatIfResult.resolvedConflicts.map((c) => `<p class="text-faint" style="margin:2px 0; font-size:12px;">${escapeHtml(formatDateStrShort(c.date))} — ${escapeHtml(trainingLabels[c.trainingLetter] || c.trainingLetter)}</p>`).join("")}
-        </div>
-      ` : ""}
-      <div class="btn-row">
-        <button class="btn btn-ghost" id="whatif-discard" type="button">Discard</button>
-        <button class="btn btn-primary" id="whatif-apply" type="button">Apply This Change</button>
-      </div>
-    ` : ""}
-  `;
-
-  qs("#whatif-date", container).addEventListener("change", (e) => { whatIfDate = e.target.value; whatIfResult = null; renderWhatIf(container, navigate); });
-  qs("#whatif-type", container).addEventListener("change", (e) => { whatIfType = e.target.value; whatIfResult = null; renderWhatIf(container, navigate); });
-  qs("#whatif-routine", container)?.addEventListener("change", (e) => { whatIfRoutineId = e.target.value; });
-  qs("#whatif-event-allday", container)?.addEventListener("change", (e) => { whatIfEventDraft.allDay = e.target.checked; renderWhatIf(container, navigate); });
-
-  qs("#whatif-run", container).addEventListener("click", () => {
-    let scenario = { type: whatIfType, date: whatIfDate };
-    if (whatIfType === "swap-routine") {
-      if (!routines.length) { toast("Add a routine first, in the Personal tab"); return; }
-      scenario.routineId = qs("#whatif-routine", container).value;
-    }
-    if (whatIfType === "add-event") {
-      const title = qs("#whatif-event-title", container).value.trim();
-      if (!title) { toast("Give the hypothetical event a title"); return; }
-      whatIfEventDraft.title = title;
-      whatIfEventDraft.activityType = qs("#whatif-event-type", container).value;
-      whatIfEventDraft.priority = qs("#whatif-event-priority", container).value;
-      whatIfEventDraft.allDay = qs("#whatif-event-allday", container).checked;
-      whatIfEventDraft.start = whatIfEventDraft.allDay ? "" : (qs("#whatif-event-start", container)?.value.trim() || "");
-      whatIfEventDraft.end = whatIfEventDraft.allDay ? "" : (qs("#whatif-event-end", container)?.value.trim() || "");
-      scenario.event = { ...whatIfEventDraft };
-    }
-    whatIfResult = runWhatIfSimulation(scenario, baseData, ctx);
-    renderWhatIf(container, navigate);
-  });
-
-  qs("#whatif-discard", container)?.addEventListener("click", () => { whatIfResult = null; renderWhatIf(container, navigate); });
-  qs("#whatif-apply", container)?.addEventListener("click", async () => {
-    if (whatIfType === "mark-unavailable") await storage.setPersonalDateOverride(whatIfDate, { availability: "unavailable" });
-    else if (whatIfType === "mark-free") await storage.setPersonalDateOverride(whatIfDate, { availability: "free" });
-    else if (whatIfType === "swap-routine") await storage.setPersonalDateOverride(whatIfDate, { routineId: whatIfRoutineId });
-    else if (whatIfType === "skip-workout") await storage.setScheduleOverride(whatIfDate, "R");
-    else if (whatIfType === "add-event") await storage.savePersonalEvent({ ...whatIfEventDraft, date: whatIfDate, recurrence: null });
-    whatIfResult = null;
-    toast("Change applied");
-    renderWhatIf(container, navigate);
-  });
-}
-
-// ============================================================================
-// SCHEDULE ROOT — the four sub-tabs (Training / Personal / Day / What If)
-// that make up the Schedule nav destination.
-// ============================================================================
-
-let scheduleActiveTab = "training";
-
-async function renderScheduleRoot(container, navigate) {
-  container.innerHTML = `
-    <h1 style="font-size:22px; margin:6px 0 16px;">Schedule</h1>
-    <div class="toggle-row" id="schedule-root-toggle" style="margin-bottom:18px;">
-      <button type="button" data-value="training" class="${scheduleActiveTab === "training" ? "active" : ""}">Training</button>
-      <button type="button" data-value="personal" class="${scheduleActiveTab === "personal" ? "active" : ""}">Personal</button>
-      <button type="button" data-value="day" class="${scheduleActiveTab === "day" ? "active" : ""}">Day</button>
-      <button type="button" data-value="whatif" class="${scheduleActiveTab === "whatif" ? "active" : ""}">What If</button>
-    </div>
-    <div id="schedule-root-body"></div>
-  `;
-  qsa("button", qs("#schedule-root-toggle", container)).forEach((btn) => {
-    btn.addEventListener("click", () => { scheduleActiveTab = btn.dataset.value; renderScheduleRoot(container, navigate); });
-  });
-  const body = qs("#schedule-root-body", container);
-  if (scheduleActiveTab === "training") await renderSchedule(body, navigate);
-  else if (scheduleActiveTab === "personal") await renderPersonalSchedule(body, navigate);
-  else if (scheduleActiveTab === "day") await renderDayView(body, navigate);
-  else await renderWhatIf(body, navigate);
-}
-
-const scheduleModule = { render: renderScheduleRoot };
+const scheduleModule = { render: renderSchedule };
 
 // ============================================================================
 // Program Setup Wizard — Program Type → Training Sequence. Establishes day
@@ -6262,9 +4825,7 @@ async function doReset(container, navigate) {
   settingsRender(container, navigate);
 }
 
-function renderProgramExRow(e, type, isFirst, isLast, levelRank = 0) {
-  const muscleKey = e.muscleGroup || "other";
-  const secondaryKey = e.secondaryMuscle || "";
+function renderProgramExRow(e, type, isFirst, isLast) {
   return `
     <div class="flex-between" style="padding:8px 0; border-top:1px solid var(--c-hairline); gap:8px; flex-wrap:wrap;">
       <span style="display:flex; align-items:center; gap:6px;">
@@ -6279,12 +4840,7 @@ function renderProgramExRow(e, type, isFirst, isLast, levelRank = 0) {
         <span class="numeric text-dim" style="min-width:30px; text-align:center;">${e.sets}×</span>
         <button class="link-btn" data-act="inc-sets" data-id="${e.id}" style="font-size:16px; padding:2px 9px; border:1px solid var(--c-hairline-strong); border-radius:6px;">+</button>
         <button class="link-btn" data-act="toggle-uni" data-id="${e.id}" data-current="${!!e.unilateral}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px; margin-left:4px;">${e.unilateral ? "Uni" : "Bi"}</button>
-        <select data-act="set-muscle" data-id="${e.id}" title="Primary muscle" style="font-size:11px; padding:3px 6px; border:1px solid var(--c-hairline-strong); border-radius:6px; background:var(--c-panel); color:var(--c-off);">
-          ${muscleOptionsHtml(muscleKey, levelRank, false)}
-        </select>
-        <select data-act="set-secondary-muscle" data-id="${e.id}" title="Secondary muscle (optional)" style="font-size:11px; padding:3px 6px; border:1px solid var(--c-hairline-strong); border-radius:6px; background:var(--c-panel); color:var(--c-off);">
-          ${muscleOptionsHtml(secondaryKey, levelRank, true)}
-        </select>
+        <button class="link-btn" data-act="edit-muscles" data-id="${e.id}" title="${escapeHtml(muscleSummaryText(e))}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;">${escapeHtml(muscleChipText(e))}</button>
         <button class="link-btn" data-act="remove-ex" data-id="${e.id}" style="color:var(--c-crimson-bright); font-size:12px; margin-left:6px;">Remove</button>
       </span>
     </div>`;
@@ -6353,42 +4909,30 @@ async function renderProgramOverview(container, navigate) {
     return;
   }
 
-  const settings = await storage.getSettings();
-  const detailLevel = settings.muscleDetailLevel || "standard";
-  const levelRank = muscleDetailRank(detailLevel);
-  const wholeProgramMuscle = programMuscleVolumeAll(levelRank);
+  const wholeProgramMuscle = programMuscleVolumeAll();
+  let newExerciseMuscles = [{ muscle: "chest", areas: [] }];
 
   container.innerHTML = `
     <button class="link-btn" data-act="back">‹ Settings</button>
     <h1 style="font-size:22px; margin:10px 0 16px;">Program Overview</h1>
-
-    <div class="section-title"><h2>Muscle Detail Level</h2></div>
-    <div class="card">
-      <div class="field" style="margin-bottom:0;">
-        <div class="toggle-row" id="muscle-detail-toggle">
-          ${MUSCLE_DETAIL_LEVELS.map((l) => `<button type="button" data-value="${l.key}" class="${l.key === detailLevel ? "active" : ""}">${escapeHtml(l.label)}</button>`).join("")}
-        </div>
-        <p class="text-faint" style="margin:10px 0 0; font-size:12.5px;">Standard shows just the main muscle groups. Advanced adds useful sub-muscles (brachialis, adductors, erectors…). Anatomical breaks things down to individual heads/regions (triceps heads, quad regions…). This only changes how much detail is shown — it never affects your workout history.</p>
-      </div>
-    </div>
 
     ${PROGRAM_DAY_TYPES.map((dt) => {
       const def = PROGRAM[dt.key];
       return `
         <div class="section-title"><h2>${escapeHtml(def.label)} — ${programVolumeSets(dt.key)} volume sets</h2></div>
         <div class="card">
-          ${def.exercises.length ? def.exercises.map((e, i) => renderProgramExRow(e, dt.key, i === 0, i === def.exercises.length - 1, levelRank)).join("") : `<p class="text-faint" style="margin:0;">No exercises in ${escapeHtml(def.label)} yet.</p>`}
-          ${muscleVolumeBreakdownHtml(programMuscleVolume(dt.key, levelRank), levelRank)}
+          ${def.exercises.length ? def.exercises.map((e, i) => renderProgramExRow(e, dt.key, i === 0, i === def.exercises.length - 1)).join("") : `<p class="text-faint" style="margin:0;">No exercises in ${escapeHtml(def.label)} yet.</p>`}
+          ${muscleVolumeBreakdownHtml(programMuscleVolume(dt.key))}
         </div>`;
     }).join("")}
-    <p class="text-faint" style="margin-bottom:22px;">Use −/+ to change sets, Bi/Uni to switch between bilateral and unilateral, the muscle dropdowns to tag what an exercise trains (primary, and optionally a secondary muscle it also works), or Remove to drop an exercise from future workouts. Unilateral exercises count double toward volume, since both sides perform the programmed sets. A secondary muscle counts at half weight, since it's worked less directly than the primary target. Historical workouts always keep what was actually performed, whatever you change here.</p>
+    <p class="text-faint" style="margin-bottom:22px;">Use −/+ to change sets, Bi/Uni to switch between bilateral and unilateral, the Muscles button to tag what an exercise trains, or Remove to drop an exercise from future workouts. Unilateral exercises count their programmed sets the same as bilateral ones. An additional (non-primary) muscle counts at half weight, since it's worked less directly than the primary target. Historical workouts always keep what was actually performed, whatever you change here.</p>
 
     <div class="section-title"><h2>Volume by Muscle Group</h2></div>
     <div class="card">
       ${Object.values(wholeProgramMuscle).some((v) => v > 0)
-        ? muscleVolumeBreakdownHtml(wholeProgramMuscle, levelRank)
-        : `<p class="text-faint" style="margin:0;">Tag your exercises with a muscle group below to see volume per muscle across your whole program.</p>`}
-      <p class="text-faint" style="margin:8px 0 0; font-size:12px;">Totals across one pass through your whole split (all day types, once each). Unilateral exercises count double; secondary muscles count at half weight.</p>
+        ? muscleVolumeBreakdownHtml(wholeProgramMuscle)
+        : `<p class="text-faint" style="margin:0;">Tag your exercises with a muscle below to see volume per muscle across your whole program.</p>`}
+      <p class="text-faint" style="margin:8px 0 0; font-size:12px;">Totals across one pass through your whole split (all day types, once each). Unilateral and bilateral sets count the same; additional muscles count at half weight.</p>
     </div>
 
     <div class="section-title"><h2>Add Exercise</h2></div>
@@ -6410,23 +4954,15 @@ async function renderProgramOverview(container, navigate) {
           <button type="button" data-value="unilateral">Unilateral</button>
         </div>
       </div>
-      <div class="field">
-        <label for="custom-ex-muscle">Primary muscle</label>
-        <select id="custom-ex-muscle">
-          ${muscleOptionsHtml(null, levelRank, false)}
-        </select>
-      </div>
-      <div class="field">
-        <label for="custom-ex-secondary-muscle">Secondary muscle (optional)</label>
-        <select id="custom-ex-secondary-muscle">
-          ${muscleOptionsHtml(null, levelRank, true)}
-        </select>
-      </div>
       <div class="field" style="margin-bottom:0;">
+        <label>Muscles Targeted</label>
+        <button type="button" class="btn" id="custom-ex-muscle-btn" style="width:100%; text-align:left;"></button>
+      </div>
+      <div class="field">
         <label for="custom-ex-sets">Planned sets</label>
         <input type="number" id="custom-ex-sets" value="2" min="1" max="10">
       </div>
-      <button class="btn btn-primary" id="custom-ex-add" style="margin-top:14px;">Add Exercise</button>
+      <button class="btn btn-primary" id="custom-ex-add" style="margin-top:4px;">Add Exercise</button>
     </div>
 
     <div class="section-title"><h2>Paste Whole Program</h2></div>
@@ -6447,11 +4983,6 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
   `;
 
   qs('[data-act="back"]', container).addEventListener("click", () => navigate("settings"));
-
-  wireToggle(qs("#muscle-detail-toggle", container), async (value) => {
-    await storage.saveSettings({ muscleDetailLevel: value });
-    renderProgramOverview(container, navigate);
-  });
 
   qsa('[data-act="move-up"], [data-act="move-down"]', container).forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -6493,19 +5024,14 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
     });
   });
 
-  qsa('[data-act="set-muscle"]', container).forEach((sel) => {
-    sel.addEventListener("change", async () => {
-      const id = sel.dataset.id;
-      await storage.updateCustomExercise(id, { muscleGroup: sel.value });
-      applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
-      renderProgramOverview(container, navigate);
-    });
-  });
-
-  qsa('[data-act="set-secondary-muscle"]', container).forEach((sel) => {
-    sel.addEventListener("change", async () => {
-      const id = sel.dataset.id;
-      await storage.updateCustomExercise(id, { secondaryMuscle: sel.value || null });
+  qsa('[data-act="edit-muscles"]', container).forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      const def = findExerciseDef(id);
+      if (!def) return;
+      const result = await openMuscleEditorModal(exerciseMuscles(def));
+      if (!result) return;
+      await storage.updateCustomExercise(id, { muscles: result });
       applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
       renderProgramOverview(container, navigate);
     });
@@ -6548,6 +5074,19 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
     });
   });
 
+  const muscleBtn = qs("#custom-ex-muscle-btn", container);
+  function updateMusclePreview() {
+    muscleBtn.textContent = muscleChipText({ muscles: newExerciseMuscles });
+  }
+  updateMusclePreview();
+  muscleBtn.addEventListener("click", async () => {
+    const result = await openMuscleEditorModal(newExerciseMuscles);
+    if (result) {
+      newExerciseMuscles = result;
+      updateMusclePreview();
+    }
+  });
+
   qs("#custom-ex-add", container).addEventListener("click", async () => {
     const nameInput = qs("#custom-ex-name", container);
     const setsInput = qs("#custom-ex-sets", container);
@@ -6561,10 +5100,8 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
 
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     const id = `custom-${slug || "exercise"}-${uid().slice(0, 6)}`;
-    const muscleGroup = qs("#custom-ex-muscle", container).value;
-    const secondaryMuscle = qs("#custom-ex-secondary-muscle", container).value || null;
 
-    await storage.addCustomExercise({ id, name, type: selectedType, sets, unilateral: selectedUni, muscleGroup, secondaryMuscle, createdAt: nowISO() });
+    await storage.addCustomExercise({ id, name, type: selectedType, sets, unilateral: selectedUni, muscles: newExerciseMuscles, createdAt: nowISO() });
     applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
     toast(`${name} added to ${PROGRAM[selectedType]?.label || selectedType}`);
     renderProgramOverview(container, navigate);
