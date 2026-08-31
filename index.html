@@ -1220,23 +1220,23 @@ function programTotalSets(type) {
 }
 
 // Unilateral exercise volume rule: a unilateral exercise's programmed set
-// count (e.g. "2 sets") means 2 sets per side — both the left and the right
-// side perform the prescribed sets. So for training-volume purposes each
-// unilateral exercise contributes double its programmed sets, while its own
+// count (e.g. "2 sets") counts as 2 sets of volume, same as a bilateral
+// exercise — one side or both sides, a "set" is a set. The per-exercise
 // programmed set count (shown elsewhere, and what the user edits) never
-// changes. Applies uniformly across every workout day type (Upper, Lower,
-// Full Body, or any custom split) since it operates on PROGRAM[type] generically.
-const UNILATERAL_VOLUME_MULTIPLIER = 2;
+// changes either way. Applies uniformly across every workout day type
+// (Upper, Lower, Full Body, or any custom split) since it operates on
+// PROGRAM[type] generically.
+const UNILATERAL_VOLUME_MULTIPLIER = 1;
 
 function exerciseVolumeSets(e) {
   if (!e) return 0;
   return e.sets * (e.unilateral ? UNILATERAL_VOLUME_MULTIPLIER : 1);
 }
 
-// Total training volume for a workout day type, in "volume sets": bilateral
-// exercises count their programmed sets once; unilateral exercises count
-// double (once per side). This is the figure used for total workout volume
-// — never the per-exercise programmed set count itself, which stays as-is.
+// Total training volume for a workout day type, in "volume sets": every
+// exercise, bilateral or unilateral, counts its programmed sets once. This
+// is the figure used for total workout volume — never the per-exercise
+// programmed set count itself, which stays as-is.
 function programVolumeSets(type) {
   return PROGRAM[type] ? PROGRAM[type].exercises.reduce((sum, e) => sum + exerciseVolumeSets(e), 0) : 0;
 }
@@ -1254,7 +1254,8 @@ function exerciseMuscles(e) {
 }
 
 // Per-muscle volume for a workout day type: { muscleKey: volumeSets }. Uses
-// the same unilateral doubling as programVolumeSets. A muscle entry's
+// the same set-counting rule as programVolumeSets (unilateral sets count
+// the same as bilateral sets). A muscle entry's
 // volume is weighted by its position (1.0× primary, 0.5× each additional
 // muscle) — an exercise tagged with just a muscle (no specific target area)
 // still counts fully toward that muscle. Target areas are still tracked per
@@ -4924,14 +4925,14 @@ async function renderProgramOverview(container, navigate) {
           ${muscleVolumeBreakdownHtml(programMuscleVolume(dt.key))}
         </div>`;
     }).join("")}
-    <p class="text-faint" style="margin-bottom:22px;">Use −/+ to change sets, Bi/Uni to switch between bilateral and unilateral, the Muscles button to tag what an exercise trains, or Remove to drop an exercise from future workouts. Unilateral exercises count double toward volume, since both sides perform the programmed sets. An additional (non-primary) muscle counts at half weight, since it's worked less directly than the primary target. Historical workouts always keep what was actually performed, whatever you change here.</p>
+    <p class="text-faint" style="margin-bottom:22px;">Use −/+ to change sets, Bi/Uni to switch between bilateral and unilateral, the Muscles button to tag what an exercise trains, or Remove to drop an exercise from future workouts. Unilateral exercises count their programmed sets the same as bilateral ones. An additional (non-primary) muscle counts at half weight, since it's worked less directly than the primary target. Historical workouts always keep what was actually performed, whatever you change here.</p>
 
     <div class="section-title"><h2>Volume by Muscle Group</h2></div>
     <div class="card">
       ${Object.values(wholeProgramMuscle).some((v) => v > 0)
         ? muscleVolumeBreakdownHtml(wholeProgramMuscle)
         : `<p class="text-faint" style="margin:0;">Tag your exercises with a muscle below to see volume per muscle across your whole program.</p>`}
-      <p class="text-faint" style="margin:8px 0 0; font-size:12px;">Totals across one pass through your whole split (all day types, once each). Unilateral exercises count double; additional muscles count at half weight.</p>
+      <p class="text-faint" style="margin:8px 0 0; font-size:12px;">Totals across one pass through your whole split (all day types, once each). Unilateral and bilateral sets count the same; additional muscles count at half weight.</p>
     </div>
 
     <div class="section-title"><h2>Add Exercise</h2></div>
