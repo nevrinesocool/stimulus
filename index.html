@@ -75,6 +75,11 @@ body{
   line-height: 1.45;
   min-height: 100dvh;
   position: relative;
+  /* Fixed-width digits everywhere — weights, reps, and timers no longer
+     shift the layout by a pixel or two as they tick up/down, which is a
+     small thing but reads as noticeably more polished in constant-motion
+     UI like set counters and rest timers. */
+  font-variant-numeric: tabular-nums;
 }
 
 /* When a custom wallpaper is set, dim it behind the UI so text stays readable.
@@ -188,6 +193,8 @@ body.pre-auth .bottom-nav{ display: none; }
   max-width: 640px;
   margin: 0 auto;
 }
+@keyframes route-in{ from{ opacity:0; transform: translateY(8px);} to{ opacity:1; transform: translateY(0);} }
+.app-main.route-anim{ animation: route-in 0.26s ease-out; }
 
 .bottom-nav{
   position: fixed;
@@ -418,10 +425,10 @@ body.pre-auth .bottom-nav{ display: none; }
   box-shadow: var(--shadow-lift);
   max-width: 88vw;
   display:flex; align-items:center; gap: 10px;
-  animation: toast-in 0.22s ease;
+  animation: toast-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .toast .undo-btn{ background:none;border:none;color:var(--c-crimson-bright);font-weight:700;font-size:13px; }
-@keyframes toast-in{ from{ opacity:0; transform: translateY(-8px);} to{opacity:1; transform:translateY(0);} }
+@keyframes toast-in{ from{ opacity:0; transform: translateY(-10px) scale(0.96);} to{opacity:1; transform:translateY(0) scale(1);} }
 
 .modal-overlay{
   position: fixed; inset:0; background: rgba(6,5,5,0.72);
@@ -438,7 +445,9 @@ body.pre-auth .bottom-nav{ display: none; }
   padding: 22px 18px calc(22px + var(--safe-b));
   max-height: 86dvh;
   overflow-y:auto;
+  animation: sheet-up 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
+@keyframes sheet-up{ from{ transform: translateY(28px); opacity: 0.5;} to{ transform: translateY(0); opacity:1;} }
 .modal-sheet h3{ font-size: 17px; margin-bottom: 8px; }
 .modal-sheet p{ color: var(--c-off-dim); font-size: 14px; line-height:1.55; }
 
@@ -692,6 +701,14 @@ html[data-theme="light"]{
 }
 html[data-theme="light"] body::before{ opacity: 0.035; }
 
+/* Themed scrollbar — mostly noticed in the PWA's desktop/installed window
+   where the default OS scrollbar would otherwise clash with the dark UI. */
+::-webkit-scrollbar{ width: 8px; height: 8px; }
+::-webkit-scrollbar-track{ background: transparent; }
+::-webkit-scrollbar-thumb{ background: var(--c-hairline-strong); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover{ background: var(--c-off-faint); }
+* { scrollbar-width: thin; scrollbar-color: var(--c-hairline-strong) transparent; }
+
 @media (prefers-reduced-motion: reduce){
   *{ animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
@@ -763,6 +780,18 @@ const LB_PER_KG = 2.20462262185;
 function uid() {
   if (crypto && crypto.randomUUID) return crypto.randomUUID();
   return "id-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+}
+
+// A short, silent-on-failure haptic tap for key in-workout moments (set
+// completed, workout finished). Purely a feel-good touch — most desktop
+// browsers and iOS Safari simply don't have navigator.vibrate, so this
+// no-ops there rather than erroring.
+function hapticTap(pattern = 10) {
+  try {
+    if (navigator.vibrate) navigator.vibrate(pattern);
+  } catch (_) {
+    /* ignore — vibration is a nicety, never worth surfacing an error for */
+  }
 }
 
 function nowISO() {
@@ -4162,7 +4191,9 @@ function rewireExerciseCard(container, workout, exerciseId) {
       const { exercise, set } = btn.dataset;
       const entry = workout.exercises.find((e) => e.exerciseId === exercise);
       const s = entry.sets[Number(set)];
+      const wasCompleted = s.completed;
       if (!s.completed && !s.skipped) s.completed = true; else if (s.completed) s.completed = false;
+      if (!wasCompleted && s.completed) hapticTap(10);
       updateSetRowUI(container, entry.exerciseId, Number(set), s);
       storage.saveActiveWorkout(workout);
       updateProgressUI(container, workout);
@@ -4319,6 +4350,7 @@ async function finishWorkout(container, workout, navigate) {
   workout.completedAt = nowISO();
   await storage.saveWorkout(workout);
   await storage.deleteActiveWorkout();
+  hapticTap([12, 40, 18]);
 
   navigate("workout-summary", { workoutId: workout.id });
 }
@@ -7231,6 +7263,14 @@ async function renderRoute(route, params) {
       </div>`;
     document.getElementById("err-home")?.addEventListener("click", () => navigate("dashboard"));
   }
+  // Fade/rise the new screen in. Re-triggering a CSS animation on the same
+  // element needs a forced reflow (re-adding a class that's already there
+  // is a no-op), which is why the class is removed and read back before
+  // being re-added — cheap way to get a per-route transition without
+  // touching every individual render function.
+  appEl.classList.remove("route-anim");
+  void appEl.offsetWidth;
+  appEl.classList.add("route-anim");
 }
 
 window.addEventListener("hashchange", () => {
