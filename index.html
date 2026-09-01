@@ -817,11 +817,18 @@ function computeWorkoutStatus(workout) {
 }
 
 // ---- streak (consecutive training days with a completed workout) ----
+// Uses local calendar days throughout (via dateKey), matching the rest of
+// the app's date handling. completedAt/startedAt are stored as UTC ISO
+// strings (nowISO()), so slicing the first 10 chars would key workouts by
+// their UTC date instead of the day the user actually trained on — for
+// anyone east of UTC, or anyone training late at night, that silently
+// shifts workouts onto the wrong day and can break a real streak (or
+// paper over a broken one).
 function computeStreak(workouts) {
   const days = new Set(
     workouts
       .filter((w) => w.status === "completed")
-      .map((w) => (w.completedAt || w.startedAt).slice(0, 10))
+      .map((w) => dateKey(new Date(w.completedAt || w.startedAt)))
   );
   if (days.size === 0) return 0;
 
@@ -830,13 +837,13 @@ function computeStreak(workouts) {
   cursor.setHours(0, 0, 0, 0);
 
   // Allow the streak to count "today" only if trained, otherwise start from yesterday.
-  const todayKey = cursor.toISOString().slice(0, 10);
+  const todayKey = dateKey(cursor);
   if (!days.has(todayKey)) {
     cursor.setDate(cursor.getDate() - 1);
   }
 
   while (true) {
-    const key = cursor.toISOString().slice(0, 10);
+    const key = dateKey(cursor);
     if (days.has(key)) {
       streak++;
       cursor.setDate(cursor.getDate() - 1);
@@ -1978,9 +1985,24 @@ function getUnavailableReason() {
 }
 
 // The "id" a record is keyed by, matching the old keyPath per store
-// (workouts/activeWorkout keyed by their own "id" field, kv keyed by "key").
+// (workouts keyed by their own "id" field, kv keyed by "key").
+//
+// activeWorkout is a single fixed slot ("only one in-progress workout at a
+// time") — the record_id used for the database row must always be the
+// constant ACTIVE_ID regardless of the workout's own id. Previously this was
+// done by overwriting the workout object's own `id` field to ACTIVE_ID
+// before saving it, but that corrupted the field once the object was read
+// back: getActiveWorkout() would hand back a workout whose `id` was now
+// literally "active", and that polluted id then flowed through to
+// finishWorkout() -> saveWorkout(), so every completed workout was written
+// to the SAME row in the workouts table, silently overwriting all prior
+// history. Keying off the constant here, independent of the value's own
+// id, keeps the single-slot behavior without ever touching the workout's
+// real id.
 function recordIdOf(storeName, value) {
-  return String(storeName === STORE_KV ? value.key : value.id);
+  if (storeName === STORE_KV) return String(value.key);
+  if (storeName === STORE_ACTIVE) return "active";
+  return String(value.id);
 }
 
 async function currentUserId() {
@@ -2309,7 +2331,11 @@ async function getActiveWorkout() {
 
 async function saveActiveWorkout(workout) {
   return saving(async () => {
-    await db.put(STORES.ACTIVE, { ...workout, id: ACTIVE_ID });
+    // Do NOT override workout.id here — recordIdOf() already keys the
+    // activeWorkout store's single row on the ACTIVE_ID constant. Forcing
+    // the workout's own id field to ACTIVE_ID used to leak into the object
+    // that later gets saved as permanent history (see recordIdOf's comment).
+    await db.put(STORES.ACTIVE, workout);
   });
 }
 
@@ -2763,7 +2789,9 @@ async function importAllData(raw) {
     }
 
     if (data.activeWorkout) {
-      await db.put(STORES.ACTIVE, { ...data.activeWorkout, id: ACTIVE_ID });
+      // Preserve the backed-up workout's own id — see recordIdOf() for why
+      // this store no longer needs (or wants) the id field overwritten.
+      await db.put(STORES.ACTIVE, data.activeWorkout);
     } else {
       await db.delete(STORES.ACTIVE, ACTIVE_ID);
     }
