@@ -51,6 +51,11 @@
   --header-h: 56px;
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
+
+  /* subtle overlay for hover/press feedback on interactive surfaces —
+     tuned per-theme below since --c-off flips between light and dark text */
+  --c-hover: rgba(237,230,219,0.05);
+  --c-press: rgba(237,230,219,0.09);
 }
 
 *, *::before, *::after{ box-sizing: border-box; }
@@ -143,6 +148,7 @@ body.pre-auth .bottom-nav{ display: none; }
   padding-right: 18px;
   background: linear-gradient(180deg, var(--c-black) 70%, rgba(13,11,11,0.85));
   border-bottom: 1px solid var(--c-hairline);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.22);
   backdrop-filter: blur(6px);
 }
 
@@ -192,22 +198,52 @@ body.pre-auth .bottom-nav{ display: none; }
   display:flex;
   background: var(--c-charcoal);
   border-top: 1px solid var(--c-hairline);
+  box-shadow: 0 -8px 20px rgba(0,0,0,0.30);
 }
 .nav-btn{
+  position: relative;
   flex:1;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
-  gap: 3px;
+  gap: 4px;
   background: none; border: none;
   color: var(--c-off-faint);
   font-size: 10.5px;
   letter-spacing: 0.03em;
   padding: 6px 2px;
   min-height: 48px;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.2s ease;
 }
-.nav-icon{ font-size: 17px; line-height:1; }
+/* Accent bar above the active tab — the pill below marks "which", this
+   marks "you're here" at a glance without needing to read the label. */
+.nav-btn::before{
+  content:"";
+  position:absolute; top:0; left:50%;
+  width:22px; height:2px; border-radius:0 0 3px 3px;
+  background: var(--c-crimson-bright);
+  transform: translateX(-50%) scaleX(0);
+  transition: transform 0.22s ease;
+}
+.nav-btn[aria-current="page"]::before{ transform: translateX(-50%) scaleX(1); }
+.nav-icon{
+  font-size: 17px; line-height:1;
+  display:inline-flex; align-items:center; justify-content:center;
+  width: 32px; height: 24px;
+  border-radius: 10px;
+  transition: background-color 0.22s ease, color 0.22s ease, transform 0.15s ease;
+}
 .nav-btn[aria-current="page"]{ color: var(--c-off); }
-.nav-btn[aria-current="page"] .nav-icon{ color: var(--c-crimson-bright); }
-.nav-btn:active{ opacity: 0.7; }
+.nav-btn[aria-current="page"] .nav-icon{
+  color: var(--c-crimson-bright);
+  background: rgba(165,51,71,0.16);
+}
+.nav-btn[aria-current="page"] span:last-child{ font-weight: 600; }
+@media (hover: hover){
+  .nav-btn:hover{ color: var(--c-off-dim); }
+  .nav-btn:hover .nav-icon{ background: var(--c-hover); }
+}
+.nav-btn:active .nav-icon{ transform: scale(0.88); }
+.nav-btn:active{ color: var(--c-off); }
 
 /* ==========================================================================
    Primitives
@@ -220,6 +256,7 @@ body.pre-auth .bottom-nav{ display: none; }
   padding: 16px;
   margin-bottom: 14px;
   position: relative;
+  transition: border-color 0.2s ease;
 }
 .card-raised{ background: var(--c-panel-raised); }
 
@@ -227,7 +264,16 @@ body.pre-auth .bottom-nav{ display: none; }
   display:flex; align-items:baseline; justify-content:space-between;
   margin: 26px 0 10px;
 }
-.section-title h2{ font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; }
+.section-title h2{
+  font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase;
+  position: relative; padding-left: 12px;
+}
+.section-title h2::before{
+  content:"";
+  position:absolute; left:0; top:2px; bottom:2px;
+  width:3px; border-radius:2px;
+  background: var(--c-crimson);
+}
 .section-title .link-btn{ font-size: 12px; }
 
 .link-btn{
@@ -247,17 +293,22 @@ body.pre-auth .bottom-nav{ display: none; }
   letter-spacing: 0.02em;
   min-height: 48px;
   width: 100%;
-  transition: transform 0.05s ease, opacity 0.15s ease;
+  transition: transform 0.05s ease, opacity 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 .btn:active{ transform: scale(0.98); }
 .btn-primary{
   background: var(--c-blood);
   border-color: var(--c-blood);
   color: var(--c-off);
+  box-shadow: 0 3px 12px rgba(92,20,32,0.35);
 }
 .btn-primary:hover{ background: var(--c-crimson); }
+.btn-primary:active{ box-shadow: 0 1px 4px rgba(92,20,32,0.35); }
 .btn-ghost{ background: transparent; }
+.btn-ghost:hover{ background: var(--c-hover); }
 .btn-danger{ border-color: var(--c-crimson); color: var(--c-crimson-bright); background: transparent; }
+.btn-danger:hover{ background: rgba(165,51,71,0.10); }
 .btn-sm{ padding: 9px 14px; min-height: 38px; font-size: 13px; width: auto; }
 .btn-row{ display:flex; gap:10px; }
 .btn-row .btn{ width: auto; flex:1; }
@@ -432,9 +483,12 @@ body.pre-auth .bottom-nav{ display: none; }
 .pr-row .pr-detail{ font-size:12.5px; color: var(--c-off-faint); }
 
 .history-item{
+  transition: background-color 0.15s ease;
   display:flex; align-items:center; gap: 14px;
   padding: 13px 0; border-bottom: 1px solid var(--c-hairline);
 }
+.history-item:hover{ background: var(--c-hover); }
+.history-item:active{ background: var(--c-press); }
 .history-item:last-child{ border-bottom:none; }
 .history-item .h-index{ font-family: var(--f-display); font-size: 20px; color: var(--c-off-faint); width: 30px; }
 .history-item .h-body{ flex:1; }
@@ -544,7 +598,14 @@ body.pre-auth .bottom-nav{ display: none; }
 .choice-card{
   background: var(--c-panel); border: 1px solid var(--c-hairline-strong);
   border-radius: var(--radius-lg); padding: 20px 14px; text-align:center;
+  transition: border-color 0.18s ease, transform 0.08s ease, background-color 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
 }
+.choice-card:not(:disabled):active{ transform: scale(0.97); background: var(--c-panel-raised); }
+@media (hover: hover){
+  .choice-card:not(:disabled):hover{ border-color: var(--c-crimson); }
+}
+.choice-card:disabled{ opacity: 0.5; }
 .choice-card .choice-icon{ font-size:22px; color: var(--c-crimson); margin-bottom:8px; }
 .choice-card .choice-title{ font-family: var(--f-display); font-size:18px; }
 .choice-card .choice-sets{ font-size: 11.5px; color: var(--c-off-faint); margin: 4px 0 14px; }
@@ -626,6 +687,8 @@ html[data-theme="light"]{
   --c-gold:          #8a6a2e;
   --c-positive:      #4b6b42;
   --c-warn:          #8a6a1e;
+  --c-hover: rgba(30,24,18,0.045);
+  --c-press: rgba(30,24,18,0.08);
 }
 html[data-theme="light"] body::before{ opacity: 0.035; }
 
