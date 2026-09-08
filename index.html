@@ -1146,6 +1146,22 @@ const RIR_OPTIONS = [
 function getExerciseUnit(settings, exerciseId) {
   return (settings && settings.exerciseUnits && settings.exerciseUnits[exerciseId]) || "kg";
 }
+
+// ---- per-exercise rest timer duration ----
+// Mirrors exerciseUnits: settings.exerciseRestSeconds is a { [exerciseId]:
+// seconds } map. An exercise with no explicit override falls back to the
+// global restTimerSeconds default (Settings > Rest Timer), so e.g. squats
+// can rest 3:00 while curls rest 1:30 without touching the global default.
+const REST_TIMER_PRESETS = [90, 120, 150, 180];
+function getExerciseRestSeconds(settings, exerciseId) {
+  const perExercise = settings && settings.exerciseRestSeconds && settings.exerciseRestSeconds[exerciseId];
+  return perExercise || (settings && settings.restTimerSeconds) || DEFAULT_SETTINGS.restTimerSeconds;
+}
+function nextRestPreset(current) {
+  const idx = REST_TIMER_PRESETS.indexOf(current);
+  return REST_TIMER_PRESETS[(idx === -1 ? 0 : idx + 1) % REST_TIMER_PRESETS.length];
+}
+
 // ============================================================================
 // PROGRAM DEFINITION — Stimulus has no built-in starter program. Instead the
 // user picks a split (Full Body / Anterior-Posterior / Upper-Lower) and a
@@ -1540,20 +1556,44 @@ function findExerciseDef(id) {
 const SPLIT_DEFS = {
   fullbody: {
     label: "Full Body",
+    description: "One workout template, repeated",
     dayTypes: [{ key: "FB", label: "Full Body" }],
     defaultPattern: ["FB", "R", "FB", "R", "FB", "R", "R"],
   },
   ap: {
     label: "Anterior / Posterior",
+    description: "Alternates front-chain and back-chain days",
     dayTypes: [{ key: "A", label: "Anterior" }, { key: "P", label: "Posterior" }],
     defaultPattern: ["A", "P", "R", "A", "P", "R", "R"],
   },
   ul: {
     label: "Upper / Lower",
+    description: "Alternates upper-body and lower-body days",
     dayTypes: [{ key: "U", label: "Upper" }, { key: "L", label: "Lower" }],
     defaultPattern: ["U", "L", "R", "U", "L", "R", "R"],
   },
+  custom: {
+    label: "Custom / Hybrid",
+    description: "Mix day types, e.g. AP + Full Body, or UL + Full Body",
+    dayTypes: [], // resolved per-account from setupChoice.blocks during setup
+    defaultPattern: [],
+  },
 };
+
+// Building blocks a "Custom / Hybrid" program can be assembled from — reuses
+// the exact same keys/labels as the built-in splits above, so e.g. picking
+// Anterior + Posterior + Full Body here is functionally identical to an
+// "AP" program with a Full Body day folded into the same sequence. Nothing
+// downstream of program setup (schedule, exercise assignment, dashboard
+// coloring, etc.) cares how a day type came to exist — it all already reads
+// off the generic PROGRAM_DAY_TYPES list, so this needed no other changes.
+const DAY_TYPE_LIBRARY = [
+  { key: "FB", label: "Full Body" },
+  { key: "A", label: "Anterior" },
+  { key: "P", label: "Posterior" },
+  { key: "U", label: "Upper" },
+  { key: "L", label: "Lower" },
+];
 
 // Builds the compact letter code (e.g. "ULUR") and its full spelled-out
 // meaning (e.g. "Upper → Lower → Upper → Rest") for a training sequence.
@@ -1824,6 +1864,7 @@ const DEFAULT_SETTINGS = {
   restTimerSeconds: 120, // rest timer duration between sets, in seconds (default 2:00)
   restTimerAutoStart: true, // auto-start the rest timer when a set is marked complete
   restTimerSound: true, // play a chime (in addition to vibration) when rest ends
+  exerciseRestSeconds: {}, // { [exerciseId]: seconds } per-exercise override of restTimerSeconds
 };
 
 const DEFAULT_PROGRAM_STATE = {
@@ -2468,13 +2509,55 @@ function closeAnyModal() {
 
 const restTimerRegion = document.getElementById("rest-timer-region");
 let restTimer = null; // { duration, remaining, paused, endAt, label, intervalId }
-
-function restTimerDefaultSeconds() {
-  return (cachedSettings && cachedSettings.restTimerSeconds) || DEFAULT_SETTINGS.restTimerSeconds;
-}
+const REST_TIMER_STORAGE_KEY = "stimulus.restTimer.v1";
 
 function restTimerShouldAutoStart() {
   return !cachedSettings || cachedSettings.restTimerAutoStart !== false;
+}
+
+// Persists just enough to survive a reload/tab-close mid-rest: a fresh page
+// load calls restoreRestTimerFromStorage() and picks the countdown back up
+// from endAt rather than losing it. Best-effort — if localStorage is
+// unavailable (private browsing, quota), the timer simply won't survive a
+// reload, same as before.
+function persistRestTimer() {
+  try {
+    if (!restTimer) { localStorage.removeItem(REST_TIMER_STORAGE_KEY); return; }
+    localStorage.setItem(REST_TIMER_STORAGE_KEY, JSON.stringify({
+      duration: restTimer.duration,
+      remaining: restTimer.remaining,
+      paused: restTimer.paused,
+      endAt: restTimer.endAt,
+      label: restTimer.label,
+    }));
+  } catch (_) { /* ignore — persistence is a nicety, not load-bearing */ }
+}
+
+function restoreRestTimerFromStorage() {
+  try {
+    const raw = localStorage.getItem(REST_TIMER_STORAGE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (!saved) return;
+
+    if (saved.paused) {
+      if (!(saved.remaining > 0)) { localStorage.removeItem(REST_TIMER_STORAGE_KEY); return; }
+      restTimer = { duration: saved.duration, remaining: saved.remaining, paused: true, endAt: Date.now() + saved.remaining * 1000, label: saved.label };
+    } else {
+      const remainingMs = saved.endAt - Date.now();
+      if (remainingMs <= 0) {
+        // Finished while the app was closed — clear it silently rather than
+        // replaying the chime/toast for a rest period that's long over.
+        localStorage.removeItem(REST_TIMER_STORAGE_KEY);
+        return;
+      }
+      restTimer = { duration: saved.duration, remaining: Math.ceil(remainingMs / 1000), paused: false, endAt: saved.endAt, label: saved.label };
+    }
+    restTimer.intervalId = setInterval(tickRestTimer, 250);
+    renderRestTimerBar();
+  } catch (_) {
+    /* corrupt or unavailable storage — just start with no timer */
+  }
 }
 
 function startRestTimer(seconds, label) {
@@ -2489,12 +2572,14 @@ function startRestTimer(seconds, label) {
   };
   restTimer.intervalId = setInterval(tickRestTimer, 250);
   renderRestTimerBar();
+  persistRestTimer();
 }
 
 function dismissRestTimer() {
   if (restTimer && restTimer.intervalId) clearInterval(restTimer.intervalId);
   restTimer = null;
   restTimerRegion.innerHTML = "";
+  persistRestTimer();
 }
 
 function tickRestTimer() {
@@ -2513,6 +2598,7 @@ function finishRestTimer() {
   if (restTimer && restTimer.intervalId) clearInterval(restTimer.intervalId);
   restTimer = null;
   restTimerRegion.innerHTML = "";
+  persistRestTimer();
   hapticTap([15, 60, 15, 60, 15]);
   if (!cachedSettings || cachedSettings.restTimerSound !== false) playRestTimerChime();
   toast(`Rest over — back to ${label}`, { duration: 3800 });
@@ -2527,6 +2613,7 @@ function pauseResumeRestTimer() {
     restTimer.paused = true;
   }
   updateRestTimerUI();
+  persistRestTimer();
 }
 
 function adjustRestTimer(deltaSeconds) {
@@ -2536,6 +2623,7 @@ function adjustRestTimer(deltaSeconds) {
   restTimer.endAt = Date.now() + restTimer.remaining * 1000;
   if (restTimer.remaining === 0) { finishRestTimer(); return; }
   updateRestTimerUI();
+  persistRestTimer();
 }
 
 function restTimerTimeLabel(totalSeconds) {
@@ -3352,6 +3440,9 @@ function renderExerciseCard(entry, workout) {
           <button type="button" data-value="lb" class="${exerciseUnit === "lb" ? "active" : ""}">lb</button>
         </div>
       </div>
+      <div class="quick-row" style="margin-top:8px;">
+        <button type="button" class="chip-btn" data-act="cycle-rest" data-exercise="${entry.exerciseId}" title="Tap to change this exercise's rest time">⏱ Rest ${restTimerTimeLabel(getExerciseRestSeconds(cachedSettings, entry.exerciseId))}</button>
+      </div>
       ${prevLines ? `<div class="ex-prev">LAST TIME<br>${prevLines.map(escapeHtml).join("<br>")}</div>` : `<div class="ex-prev text-faint">No previous data yet</div>`}
       <div class="sets-list">${setsHtml}</div>
       <div class="quick-row">
@@ -3511,6 +3602,19 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
     });
   });
 
+  // Per-exercise rest timer duration — tap to cycle through presets
+  qsa('[data-act="cycle-rest"]', container).forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const exerciseId = btn.dataset.exercise;
+      const current = getExerciseRestSeconds(cachedSettings, exerciseId);
+      const next = nextRestPreset(current);
+      const map = cachedSettings.exerciseRestSeconds || {};
+      cachedSettings.exerciseRestSeconds = { ...map, [exerciseId]: next };
+      await storage.saveSettings({ exerciseRestSeconds: cachedSettings.exerciseRestSeconds });
+      btn.textContent = `⏱ Rest ${restTimerTimeLabel(next)}`;
+    });
+  });
+
   // RIR chips and failure toggle
   qsa('[data-act="set-rir"]', container).forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -3540,7 +3644,7 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
       if (!wasCompleted && s.completed) {
         hapticTap(10);
         if (restTimerShouldAutoStart()) {
-          startRestTimer(restTimerDefaultSeconds(), `${entry.name} · Set ${Number(set) + 1}`);
+          startRestTimer(getExerciseRestSeconds(cachedSettings, entry.exerciseId), `${entry.name} · Set ${Number(set) + 1}`);
         }
       }
       updateSetRowUI(container, entry.exerciseId, Number(set), s);
@@ -3712,6 +3816,16 @@ function rewireExerciseCard(container, workout, exerciseId) {
       });
     });
   });
+  qsa('[data-act="cycle-rest"]', card).forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const current = getExerciseRestSeconds(cachedSettings, exerciseId);
+      const next = nextRestPreset(current);
+      const map = cachedSettings.exerciseRestSeconds || {};
+      cachedSettings.exerciseRestSeconds = { ...map, [exerciseId]: next };
+      await storage.saveSettings({ exerciseRestSeconds: cachedSettings.exerciseRestSeconds });
+      btn.textContent = `⏱ Rest ${restTimerTimeLabel(next)}`;
+    });
+  });
   qsa('[data-act="set-rir"]', card).forEach((btn) => {
     btn.addEventListener("click", () => {
       const { exercise, set, rir, side } = btn.dataset;
@@ -3734,7 +3848,7 @@ function rewireExerciseCard(container, workout, exerciseId) {
       if (!wasCompleted && s.completed) {
         hapticTap(10);
         if (restTimerShouldAutoStart()) {
-          startRestTimer(restTimerDefaultSeconds(), `${entry.name} · Set ${Number(set) + 1}`);
+          startRestTimer(getExerciseRestSeconds(cachedSettings, entry.exerciseId), `${entry.name} · Set ${Number(set) + 1}`);
         }
       }
       updateSetRowUI(container, entry.exerciseId, Number(set), s);
@@ -4782,7 +4896,7 @@ async function renderSchedule(container, navigate) {
 
     <div class="section-title"><h2>Program Type</h2></div>
     <div class="card">
-      <p class="text-faint" style="margin:0 0 12px;">Currently ${SPLIT_DEFS[programState.split]?.label || "–"}.</p>
+      <p class="text-faint" style="margin:0 0 12px;">Currently ${SPLIT_DEFS[programState.split]?.label || "–"}${programState.split === "custom" && programState.dayTypes?.length ? ` (${programState.dayTypes.map((dt) => escapeHtml(dt.label)).join(" + ")})` : ""}.</p>
       <button class="link-btn" id="restart-setup-btn">Change Program Type</button>
     </div>
   `;
@@ -5073,13 +5187,28 @@ const scheduleModule = { render: renderScheduleRoot };
 // workout data.
 // ============================================================================
 
-let setupStep = "split"; // "split" | "sequence"
-let setupChoice = { split: null };
+let setupStep = "split"; // "split" | "blocks" | "sequence" — "blocks" only applies to the "custom" split
+let setupChoice = { split: null }; // { split, blocks? } — blocks is an array of DAY_TYPE_LIBRARY keys, only used when split === "custom"
 let setupSequenceDraft = null; // array of dayType keys / "R", built during the sequence step
+
+// Resolves the working "split definition" for whichever step is showing —
+// a real SPLIT_DEFS entry for the three built-ins, or a synthetic one built
+// from the user's block selection for "custom".
+function resolveSetupSplitDef(choice) {
+  if (choice.split === "custom") {
+    const dayTypes = DAY_TYPE_LIBRARY.filter((b) => (choice.blocks || []).includes(b.key));
+    return { label: "Custom / Hybrid", dayTypes, defaultPattern: dayTypes.map((dt) => dt.key) };
+  }
+  return SPLIT_DEFS[choice.split];
+}
 
 async function renderProgramSetup(container, navigate) {
   const programState = await storage.getProgramState();
-  if (!setupChoice.split && programState.split) setupChoice = { split: programState.split };
+  if (!setupChoice.split && programState.split) {
+    setupChoice = programState.split === "custom"
+      ? { split: "custom", blocks: (programState.dayTypes || []).map((dt) => dt.key) }
+      : { split: programState.split };
+  }
 
   if (setupStep === "split") {
     container.innerHTML = `
@@ -5090,22 +5219,67 @@ async function renderProgramSetup(container, navigate) {
           <button class="choice-card" data-split="${key}">
             <div class="choice-icon">◆</div>
             <div class="choice-title">${escapeHtml(def.label)}</div>
+            <div class="choice-sets">${escapeHtml(def.description || "")}</div>
           </button>`).join("")}
       </div>
     `;
     qsa("[data-split]", container).forEach((btn) => {
       btn.addEventListener("click", () => {
-        setupChoice = { split: btn.dataset.split };
-        setupSequenceDraft = SPLIT_DEFS[btn.dataset.split].defaultPattern.slice();
-        setupStep = "sequence";
+        const splitKey = btn.dataset.split;
+        if (splitKey === "custom") {
+          setupChoice = { split: "custom", blocks: setupChoice.blocks || [] };
+          setupSequenceDraft = null;
+          setupStep = "blocks";
+        } else {
+          setupChoice = { split: splitKey };
+          setupSequenceDraft = SPLIT_DEFS[splitKey].defaultPattern.slice();
+          setupStep = "sequence";
+        }
         renderProgramSetup(container, navigate);
       });
     });
     return;
   }
 
+  if (setupStep === "blocks") {
+    const selected = setupChoice.blocks || [];
+    container.innerHTML = `
+      <button class="link-btn" data-act="back">‹ Change Program</button>
+      <h1 style="font-size:22px; margin:10px 0 6px;">Build Your Hybrid</h1>
+      <p class="text-faint" style="margin:0 0 18px;">Pick the day types to mix — e.g. Anterior + Posterior + Full Body, or Upper + Lower + Full Body. You'll arrange the order next.</p>
+      <div class="card">
+        ${DAY_TYPE_LIBRARY.map((b, i) => `
+          <label style="display:flex; align-items:center; gap:10px; padding:10px 0; ${i > 0 ? "border-top:1px solid var(--c-hairline);" : ""}">
+            <input type="checkbox" data-key="${b.key}" ${selected.includes(b.key) ? "checked" : ""}>
+            <span>${escapeHtml(b.label)}</span>
+          </label>`).join("")}
+      </div>
+      <button class="btn btn-primary" id="blocks-continue" style="width:100%; margin-top:16px;">Continue</button>
+    `;
+    qs('[data-act="back"]', container).addEventListener("click", () => { setupStep = "split"; renderProgramSetup(container, navigate); });
+    qsa('input[type="checkbox"]', container).forEach((cb) => {
+      cb.addEventListener("change", () => {
+        const current = setupChoice.blocks || [];
+        const next = cb.checked
+          ? [...current, cb.dataset.key] // append in the order checked — the default sequence below follows this same order
+          : current.filter((k) => k !== cb.dataset.key);
+        setupChoice = { ...setupChoice, blocks: next };
+      });
+    });
+    qs("#blocks-continue", container).addEventListener("click", () => {
+      if (!(setupChoice.blocks || []).length) {
+        toast("Pick at least one day type");
+        return;
+      }
+      setupSequenceDraft = [...setupChoice.blocks, "R"];
+      setupStep = "sequence";
+      renderProgramSetup(container, navigate);
+    });
+    return;
+  }
+
   // sequence
-  const splitDef = SPLIT_DEFS[setupChoice.split];
+  const splitDef = resolveSetupSplitDef(setupChoice);
   if (!setupSequenceDraft) setupSequenceDraft = splitDef.defaultPattern.slice();
   const labels = { ...Object.fromEntries(splitDef.dayTypes.map((dt) => [dt.key, dt.label])), R: "Rest" };
 
@@ -5126,7 +5300,10 @@ async function renderProgramSetup(container, navigate) {
   };
   renderSeqCard();
 
-  qs('[data-act="back"]', container).addEventListener("click", () => { setupStep = "split"; renderProgramSetup(container, navigate); });
+  qs('[data-act="back"]', container).addEventListener("click", () => {
+    setupStep = setupChoice.split === "custom" ? "blocks" : "split";
+    renderProgramSetup(container, navigate);
+  });
   qs("#setup-finish", container).addEventListener("click", async () => {
     if (!setupSequenceDraft.length) {
       toast("Add at least one day to your sequence");
@@ -5222,6 +5399,8 @@ async function settingsRender(container, navigate) {
           <button data-value="150" class="${settings.restTimerSeconds === 150 ? "active" : ""}">2:30</button>
           <button data-value="180" class="${settings.restTimerSeconds === 180 ? "active" : ""}">3:00</button>
         </div>
+        <p class="text-faint" style="margin:8px 0 0;">This is the default. Tap the ⏱ Rest chip on any exercise during a workout to give it its own duration instead.</p>
+        ${Object.keys(settings.exerciseRestSeconds || {}).length ? `<button class="link-btn" id="reset-exercise-rest-btn" style="margin-top:8px;">Reset all per-exercise rest overrides</button>` : ""}
       </div>
       <div class="field">
         <label>Auto-start after marking a set complete</label>
@@ -5277,6 +5456,12 @@ async function settingsRender(container, navigate) {
   wireToggle(qs("#rest-duration-toggle", container), async (value) => {
     await storage.saveSettings({ restTimerSeconds: Number(value) });
     if (cachedSettings) cachedSettings.restTimerSeconds = Number(value);
+  });
+  qs("#reset-exercise-rest-btn", container)?.addEventListener("click", async () => {
+    await storage.saveSettings({ exerciseRestSeconds: {} });
+    if (cachedSettings) cachedSettings.exerciseRestSeconds = {};
+    toast("Per-exercise rest overrides cleared");
+    settingsRender(container, navigate);
   });
   wireToggle(qs("#rest-autostart-toggle", container), async (value) => {
     await storage.saveSettings({ restTimerAutoStart: value === "on" });
@@ -6019,6 +6204,10 @@ function renderAuthScreen() {
 
 supa.auth.onAuthStateChange((event) => {
   if (event === "SIGNED_OUT") {
+    // Rest timer state is device-local, not per-account — clear it on
+    // sign-out so a timer started by one account can't bleed into the
+    // next person who signs in on this device/browser.
+    dismissRestTimer();
     location.reload();
   }
 });
@@ -6074,6 +6263,7 @@ async function bootApp() {
 }
 
 boot();
+restoreRestTimerFromStorage();
 
 </script>
 </body>
