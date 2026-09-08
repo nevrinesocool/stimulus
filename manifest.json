@@ -1,7 +1,7 @@
 {
   "name": "Stimulus — Train. Track. Adapt.",
   "short_name": "Stimulus",
-  "description": "Offline-first strength training log and progression tracker.",
+  "description": "Cloud-synced strength training log and progression tracker.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

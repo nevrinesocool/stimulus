@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <title>STIMULUS — Train. Track. Adapt.</title>
-<meta name="description" content="Offline-first strength training log and progression tracker. Train. Track. Adapt.">
+<meta name="description" content="Cloud-synced strength training log and progression tracker. Train. Track. Adapt.">
 <meta name="theme-color" content="#0d0b0b">
 <link rel="manifest" href="./manifest.json">
 <link rel="icon" href="./icon-192.png">
@@ -207,6 +207,89 @@ body.pre-auth .bottom-nav{ display: none; }
   border-top: 1px solid var(--c-hairline);
   box-shadow: 0 -8px 20px rgba(0,0,0,0.30);
 }
+/* ==========================================================================
+   Rest timer — floating bar that sits above the bottom nav and persists
+   across screen navigation (it lives in its own fixed region, outside the
+   router's re-rendered <main>, so switching tabs never interrupts it).
+   ========================================================================== */
+#rest-timer-region{
+  position: fixed;
+  left:0; right:0;
+  bottom: calc(var(--nav-h) + var(--safe-b));
+  z-index: 45;
+  display:flex;
+  justify-content:center;
+  padding: 0 12px;
+  pointer-events: none;
+}
+.rest-timer-bar{
+  pointer-events: auto;
+  width: 100%;
+  max-width: 640px;
+  display:flex;
+  align-items:center;
+  gap: 12px;
+  background: var(--c-panel-raised);
+  border: 1px solid var(--c-hairline-strong);
+  border-bottom: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: var(--shadow-lift);
+  padding: 10px 12px;
+  animation: rest-timer-in 0.22s ease-out;
+}
+@keyframes rest-timer-in{ from{ opacity:0; transform: translateY(14px);} to{ opacity:1; transform: translateY(0);} }
+.rest-timer-bar.paused{ opacity: 0.72; }
+.rest-timer-ring{
+  position: relative;
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: conic-gradient(var(--c-crimson-bright) calc(var(--rt-pct, 100) * 1%), var(--c-hairline) 0);
+  display:flex; align-items:center; justify-content:center;
+  transition: background 0.2s linear;
+}
+.rest-timer-ring::before{
+  content:"";
+  position:absolute; inset: 3px;
+  border-radius: 50%;
+  background: var(--c-panel-raised);
+}
+.rest-timer-time{
+  position: relative;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c-off);
+}
+.rest-timer-mid{ flex:1; min-width:0; }
+.rest-timer-mid .eyebrow{ margin-bottom: 1px; }
+.rest-timer-label{
+  font-size: 13px;
+  color: var(--c-off-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rest-timer-actions{ display:flex; align-items:center; gap: 6px; flex-shrink:0; }
+.rt-btn{
+  background: var(--c-charcoal);
+  border: 1px solid var(--c-hairline-strong);
+  color: var(--c-off);
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 7px 9px;
+  line-height: 1;
+}
+.rt-btn:active{ background: var(--c-press); }
+.rt-btn-primary{
+  background: var(--c-crimson);
+  border-color: var(--c-crimson);
+  min-width: 30px;
+  text-align: center;
+  font-size: 13px;
+}
+.rt-btn-skip{ color: var(--c-off-faint); }
+
 .nav-btn{
   position: relative;
   flex:1;
@@ -719,6 +802,7 @@ html[data-theme="light"] body::before{ opacity: 0.035; }
 
 <div id="toast-region" class="toast-region" aria-live="polite"></div>
 <div id="modal-root"></div>
+<div id="rest-timer-region"></div>
 
 <header class="app-header">
   <div class="brand">
@@ -1737,6 +1821,9 @@ const DEFAULT_SETTINGS = {
   accentColor: null, // null = default crimson; else a "#rrggbb" hex string
   scheduleStartDate: todayDateStr(), // ISO date — day 1 of the training sequence cycle (see programState.pattern); reset to today whenever setup finishes
   exerciseUnits: {}, // { [exerciseId]: "kg" | "lb" }, missing entries default to kg
+  restTimerSeconds: 120, // rest timer duration between sets, in seconds (default 2:00)
+  restTimerAutoStart: true, // auto-start the rest timer when a set is marked complete
+  restTimerSound: true, // play a chime (in addition to vibration) when rest ends
 };
 
 const DEFAULT_PROGRAM_STATE = {
@@ -2372,6 +2459,164 @@ function closeAnyModal() {
   modalRoot.innerHTML = "";
 }
 
+// ============================================================================
+// REST TIMER — a floating countdown between sets. It lives in its own fixed
+// region outside <main>, driven by its own interval, so it keeps counting
+// down even while the user flips to History/Settings/etc and back — the
+// router's teardown()/renderRoute() never touches it.
+// ============================================================================
+
+const restTimerRegion = document.getElementById("rest-timer-region");
+let restTimer = null; // { duration, remaining, paused, endAt, label, intervalId }
+
+function restTimerDefaultSeconds() {
+  return (cachedSettings && cachedSettings.restTimerSeconds) || DEFAULT_SETTINGS.restTimerSeconds;
+}
+
+function restTimerShouldAutoStart() {
+  return !cachedSettings || cachedSettings.restTimerAutoStart !== false;
+}
+
+function startRestTimer(seconds, label) {
+  if (!seconds || seconds <= 0) return;
+  if (restTimer && restTimer.intervalId) clearInterval(restTimer.intervalId);
+  restTimer = {
+    duration: seconds,
+    remaining: seconds,
+    paused: false,
+    endAt: Date.now() + seconds * 1000,
+    label: label || "Rest",
+  };
+  restTimer.intervalId = setInterval(tickRestTimer, 250);
+  renderRestTimerBar();
+}
+
+function dismissRestTimer() {
+  if (restTimer && restTimer.intervalId) clearInterval(restTimer.intervalId);
+  restTimer = null;
+  restTimerRegion.innerHTML = "";
+}
+
+function tickRestTimer() {
+  if (!restTimer || restTimer.paused) return;
+  const remainingMs = restTimer.endAt - Date.now();
+  if (remainingMs <= 0) {
+    finishRestTimer();
+    return;
+  }
+  restTimer.remaining = Math.ceil(remainingMs / 1000);
+  updateRestTimerUI();
+}
+
+function finishRestTimer() {
+  const label = restTimer ? restTimer.label : "Rest";
+  if (restTimer && restTimer.intervalId) clearInterval(restTimer.intervalId);
+  restTimer = null;
+  restTimerRegion.innerHTML = "";
+  hapticTap([15, 60, 15, 60, 15]);
+  if (!cachedSettings || cachedSettings.restTimerSound !== false) playRestTimerChime();
+  toast(`Rest over — back to ${label}`, { duration: 3800 });
+}
+
+function pauseResumeRestTimer() {
+  if (!restTimer) return;
+  if (restTimer.paused) {
+    restTimer.endAt = Date.now() + restTimer.remaining * 1000;
+    restTimer.paused = false;
+  } else {
+    restTimer.paused = true;
+  }
+  updateRestTimerUI();
+}
+
+function adjustRestTimer(deltaSeconds) {
+  if (!restTimer) return;
+  restTimer.remaining = Math.max(0, restTimer.remaining + deltaSeconds);
+  if (restTimer.remaining > restTimer.duration) restTimer.duration = restTimer.remaining;
+  restTimer.endAt = Date.now() + restTimer.remaining * 1000;
+  if (restTimer.remaining === 0) { finishRestTimer(); return; }
+  updateRestTimerUI();
+}
+
+function restTimerTimeLabel(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function renderRestTimerBar() {
+  if (!restTimer) { restTimerRegion.innerHTML = ""; return; }
+  const pct = Math.max(0, Math.min(100, Math.round((restTimer.remaining / restTimer.duration) * 100)));
+  restTimerRegion.innerHTML = `
+    <div class="rest-timer-bar ${restTimer.paused ? "paused" : ""}" role="status">
+      <div class="rest-timer-ring" style="--rt-pct:${pct}">
+        <span class="numeric rest-timer-time">${restTimerTimeLabel(restTimer.remaining)}</span>
+      </div>
+      <div class="rest-timer-mid">
+        <div class="eyebrow">Resting</div>
+        <div class="rest-timer-label">${escapeHtml(restTimer.label)}</div>
+      </div>
+      <div class="rest-timer-actions">
+        <button type="button" class="rt-btn" data-act="rt-minus" aria-label="Subtract 15 seconds">−15</button>
+        <button type="button" class="rt-btn rt-btn-primary" data-act="rt-pause" aria-label="${restTimer.paused ? "Resume" : "Pause"}">${restTimer.paused ? "▶" : "❚❚"}</button>
+        <button type="button" class="rt-btn" data-act="rt-plus" aria-label="Add 15 seconds">+15</button>
+        <button type="button" class="rt-btn rt-btn-skip" data-act="rt-skip" aria-label="Skip rest">Skip</button>
+      </div>
+    </div>`;
+  wireRestTimerBar();
+}
+
+function updateRestTimerUI() {
+  const bar = qs(".rest-timer-bar", restTimerRegion);
+  if (!bar) { renderRestTimerBar(); return; }
+  const timeEl = qs(".rest-timer-time", bar);
+  if (timeEl) timeEl.textContent = restTimerTimeLabel(restTimer.remaining);
+  const ring = qs(".rest-timer-ring", bar);
+  if (ring) ring.style.setProperty("--rt-pct", Math.max(0, Math.min(100, Math.round((restTimer.remaining / restTimer.duration) * 100))));
+  const pauseBtn = qs('[data-act="rt-pause"]', bar);
+  if (pauseBtn) {
+    pauseBtn.textContent = restTimer.paused ? "▶" : "❚❚";
+    pauseBtn.setAttribute("aria-label", restTimer.paused ? "Resume" : "Pause");
+  }
+  bar.classList.toggle("paused", !!restTimer.paused);
+}
+
+function wireRestTimerBar() {
+  const bar = qs(".rest-timer-bar", restTimerRegion);
+  if (!bar) return;
+  qs('[data-act="rt-minus"]', bar)?.addEventListener("click", () => adjustRestTimer(-15));
+  qs('[data-act="rt-plus"]', bar)?.addEventListener("click", () => adjustRestTimer(15));
+  qs('[data-act="rt-pause"]', bar)?.addEventListener("click", pauseResumeRestTimer);
+  qs('[data-act="rt-skip"]', bar)?.addEventListener("click", () => { hapticTap(8); dismissRestTimer(); });
+}
+
+// A short two-tone chime via WebAudio — no external audio file needed, and
+// it still plays reliably from a background tab since it's a plain
+// oscillator rather than an <audio> element that some browsers suspend.
+let restTimerAudioCtx = null;
+function playRestTimerChime() {
+  try {
+    restTimerAudioCtx = restTimerAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = restTimerAudioCtx;
+    if (ctx.state === "suspended") ctx.resume();
+    const now = ctx.currentTime;
+    [[880, now], [1180, now + 0.16]].forEach(([freq, start]) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.22, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.32);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.34);
+    });
+  } catch (_) {
+    /* WebAudio unavailable/blocked — vibration + toast still land */
+  }
+}
+
 // Lets the user override a single date's day type (or clear an existing
 // override to fall back to the repeating pattern). Resolves to:
 //   { action: "set", value: dayTypeKey|"R" } | { action: "clear" } | null
@@ -2936,6 +3181,7 @@ async function renderWorkoutHome(container, navigate) {
     });
     if (ok) {
       await storage.deleteActiveWorkout();
+      dismissRestTimer();
       toast("Workout discarded");
       renderWorkoutHome(container, navigate);
     }
@@ -2977,6 +3223,7 @@ async function startNewWorkout(type) {
     notes: "",
   };
 
+  dismissRestTimer();
   await storage.saveActiveWorkout(workout);
 }
 
@@ -3283,11 +3530,18 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
       const { exercise, set } = btn.dataset;
       const entry = workout.exercises.find((e) => e.exerciseId === exercise);
       const s = entry.sets[Number(set)];
+      const wasCompleted = s.completed;
 
       if (!s.completed && !s.skipped) {
         s.completed = true;
       } else if (s.completed) {
         s.completed = false;
+      }
+      if (!wasCompleted && s.completed) {
+        hapticTap(10);
+        if (restTimerShouldAutoStart()) {
+          startRestTimer(restTimerDefaultSeconds(), `${entry.name} · Set ${Number(set) + 1}`);
+        }
       }
       updateSetRowUI(container, entry.exerciseId, Number(set), s);
       storage.saveActiveWorkout(workout);
@@ -3477,7 +3731,12 @@ function rewireExerciseCard(container, workout, exerciseId) {
       const s = entry.sets[Number(set)];
       const wasCompleted = s.completed;
       if (!s.completed && !s.skipped) s.completed = true; else if (s.completed) s.completed = false;
-      if (!wasCompleted && s.completed) hapticTap(10);
+      if (!wasCompleted && s.completed) {
+        hapticTap(10);
+        if (restTimerShouldAutoStart()) {
+          startRestTimer(restTimerDefaultSeconds(), `${entry.name} · Set ${Number(set) + 1}`);
+        }
+      }
       updateSetRowUI(container, entry.exerciseId, Number(set), s);
       storage.saveActiveWorkout(workout);
       updateProgressUI(container, workout);
@@ -3634,6 +3893,7 @@ async function finishWorkout(container, workout, navigate) {
   workout.completedAt = nowISO();
   await storage.saveWorkout(workout);
   await storage.deleteActiveWorkout();
+  dismissRestTimer();
   hapticTap([12, 40, 18]);
 
   navigate("workout-summary", { workoutId: workout.id });
@@ -4952,6 +5212,33 @@ async function settingsRender(container, navigate) {
       </div>
     </div>
 
+    <div class="section-title"><h2>Rest Timer</h2></div>
+    <div class="card">
+      <div class="field">
+        <label>Rest duration between sets</label>
+        <div class="toggle-row" id="rest-duration-toggle">
+          <button data-value="90" class="${settings.restTimerSeconds === 90 ? "active" : ""}">1:30</button>
+          <button data-value="120" class="${settings.restTimerSeconds === 120 ? "active" : ""}">2:00</button>
+          <button data-value="150" class="${settings.restTimerSeconds === 150 ? "active" : ""}">2:30</button>
+          <button data-value="180" class="${settings.restTimerSeconds === 180 ? "active" : ""}">3:00</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Auto-start after marking a set complete</label>
+        <div class="toggle-row" id="rest-autostart-toggle">
+          <button data-value="on" class="${settings.restTimerAutoStart !== false ? "active" : ""}">On</button>
+          <button data-value="off" class="${settings.restTimerAutoStart === false ? "active" : ""}">Off</button>
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label>Sound when rest ends</label>
+        <div class="toggle-row" id="rest-sound-toggle">
+          <button data-value="on" class="${settings.restTimerSound !== false ? "active" : ""}">On</button>
+          <button data-value="off" class="${settings.restTimerSound === false ? "active" : ""}">Off</button>
+        </div>
+      </div>
+    </div>
+
     <div class="section-title"><h2>Data</h2></div>
     <div class="card">
       <div class="flex-between">
@@ -4976,6 +5263,7 @@ async function settingsRender(container, navigate) {
     <div class="card">
       <p class="text-dim" style="font-size:13.5px; margin:0 0 8px;">Stimulus v1 — Train. Track. Adapt.</p>
       <p class="text-faint" style="margin:0 0 6px;">Your data is stored in your account, isolated from every other account by the database's own access rules — not just kept on this device. Sign in anywhere and it follows you.</p>
+      <p class="text-faint" style="margin:0 0 6px;">This app needs a live connection to load or save your data — the app screen itself can open offline, but signing in, logging sets, and everything else requires the internet.</p>
       <p class="text-faint" style="margin:0 0 6px;">JSON export/import is still available as an extra manual backup, in addition to your account.</p>
       <p class="text-faint" style="margin:0;">This app runs independently of any AI service. It was built with Claude's help, but nothing here calls Claude or any AI API.</p>
     </div>
@@ -4984,6 +5272,19 @@ async function settingsRender(container, navigate) {
   wireToggle(qs("#theme-toggle", container), async (value) => {
     await storage.saveSettings({ theme: value });
     applyTheme(value);
+  });
+
+  wireToggle(qs("#rest-duration-toggle", container), async (value) => {
+    await storage.saveSettings({ restTimerSeconds: Number(value) });
+    if (cachedSettings) cachedSettings.restTimerSeconds = Number(value);
+  });
+  wireToggle(qs("#rest-autostart-toggle", container), async (value) => {
+    await storage.saveSettings({ restTimerAutoStart: value === "on" });
+    if (cachedSettings) cachedSettings.restTimerAutoStart = value === "on";
+  });
+  wireToggle(qs("#rest-sound-toggle", container), async (value) => {
+    await storage.saveSettings({ restTimerSound: value === "on" });
+    if (cachedSettings) cachedSettings.restTimerSound = value === "on";
   });
 
   qs("#bg-choose-btn", container).addEventListener("click", () => qs("#bg-file", container).click());
@@ -5591,7 +5892,7 @@ async function renderRoute(route, params) {
       <div class="empty-state">
         <span class="glyph">⚠</span>
         <h3>Something went wrong loading this screen</h3>
-        <p>Your workout data is safe in local storage. Try going back to the dashboard.</p>
+        <p>This didn't touch your saved data. Try going back to the dashboard.</p>
         <button class="btn btn-primary" style="margin-top:16px; width:auto; padding-left:24px; padding-right:24px;" id="err-home">Go to Dashboard</button>
       </div>`;
     document.getElementById("err-home")?.addEventListener("click", () => navigate("dashboard"));

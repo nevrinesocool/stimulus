@@ -1,19 +1,20 @@
 // ============================================================================
-// STIMULUS — app-shell cache for offline-first behavior.
+// STIMULUS — app-shell cache. This only makes the static UI (HTML/CSS/JS,
+// manifest, icons) load instantly and open even with no connection. It is
+// NOT full offline support: all workout data, settings, and auth live in
+// Supabase and are fetched over the network, so logging or viewing a
+// workout still requires connectivity even though the screen itself opens.
 //
 // Bump CACHE_VERSION whenever you ship a change to index.html or any other
 // cached file. The old cache is deleted on activate, so stale application
-// code is never served indefinitely — but nothing here ever touches workout
-// data, which lives in IndexedDB, entirely outside this cache.
+// code is never served indefinitely.
 //
 // Renamed from "ledger-shell" during the Stimulus rebrand — this only ever
 // held static shell files, never user data, so the old cache is simply
-// deleted on the next activate like any other version bump. The IndexedDB
-// database name is intentionally left unchanged elsewhere so existing
-// users' workout history keeps loading after the rebrand.
+// deleted on the next activate like any other version bump.
 // ============================================================================
 
-const CACHE_VERSION = "v14";
+const CACHE_VERSION = "v15";
 const CACHE_NAME = `stimulus-shell-${CACHE_VERSION}`;
 
 // Paths are relative to this file's own location so the app works correctly
