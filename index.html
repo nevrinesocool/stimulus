@@ -2177,13 +2177,24 @@ async function commitProgramPatternChange(pattern, effectiveFrom) {
 // these adjust the ANCHOR of whichever version currently governs today
 // (i.e. re-align the rotation's phase) without changing the pattern itself
 // or touching any earlier historical version.
+//
+// BUGFIX: this used to grab sorted[sorted.length - 1] — the entry with the
+// chronologically LATEST effectiveFrom. That's only "today's version" when
+// there's no future change queued. As soon as a "Finish Current Rotation"
+// or "Pick a Specific Date" change is scheduled (a real, common flow — see
+// renderPatternEditor's pickOptionModal), that future entry sorts last, so
+// shifting the schedule or editing the Cycle Start Date silently moved the
+// *upcoming* version's start date instead of today's active one — the
+// currently-governing rotation was untouched, while a change you hadn't
+// even reached yet got quietly rewritten. Target the version that actually
+// resolves for today's date instead, matching the doc comment above.
 async function updateCurrentVersionAnchor(newEffectiveFrom) {
   return saving(async () => {
     const history = await getProgramHistory();
     if (!history.length) return history;
-    const sorted = [...history].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
-    const last = sorted[sorted.length - 1];
-    const updated = [...sorted.slice(0, -1), { ...last, effectiveFrom: newEffectiveFrom }];
+    const current = resolvePatternVersion(todayDateStr(), history);
+    if (!current) return history;
+    const updated = history.map((v) => (v.id === current.id ? { ...v, effectiveFrom: newEffectiveFrom } : v));
     await db.put(STORES.KV, { key: KV_PROGRAM_HISTORY, list: updated });
     return updated;
   });
@@ -4751,9 +4762,18 @@ let calendarMonthOffset = 0; // months from current month, for the month-view na
 async function renderSchedule(container, navigate) {
   const settingsData = await storage.getSettings();
   const programState = await storage.getProgramState();
-  const startDateStr = settingsData.scheduleStartDate || DEFAULT_SETTINGS.scheduleStartDate;
   const overrides = await storage.getScheduleOverrides();
   const programHistory = await storage.getProgramHistory();
+  // The Cycle Start Date shown/edited below must reflect whichever version
+  // actually governs today, not the separate settings.scheduleStartDate
+  // field — that field is only set once (at full Program Setup) and is
+  // never updated by ordinary Training Sequence edits, so it silently goes
+  // stale the moment you edit your sequence in place rather than redoing
+  // setup. Deriving it from program history instead keeps it truthful, and
+  // is also what fixes "Shift Forward/Back" actually shifting by the day
+  // you asked for instead of some stale, unrelated amount.
+  const currentHistoryVersion = resolvePatternVersion(todayDateStr(), programHistory);
+  const startDateStr = currentHistoryVersion ? currentHistoryVersion.effectiveFrom : (settingsData.scheduleStartDate || DEFAULT_SETTINGS.scheduleStartDate);
   patternDraft = (programState.pattern || []).slice();
 
   const labels = dayTypeLabels();
