@@ -2217,6 +2217,27 @@ async function deleteProgramHistoryEntry(id) {
   });
 }
 
+// Wipes the entire version history and reseeds it with a single fresh entry
+// (today's current pattern, effective today). This is the escape hatch for
+// an account whose history got corrupted by the updateCurrentVersionAnchor
+// bug (see comment above that function) — before the fix, "Shift a Day" or
+// editing Cycle Start Date while a future change was queued could stamp a
+// bogus effectiveFrom onto the wrong entry, permanently orphaning a
+// scheduled change and/or leaving a nonsense "was in effect from..." row in
+// Program History. Rather than trying to reverse-engineer what the
+// original correct dates were (not knowable after the fact), this collapses
+// history back to one clean, correct entry. It never touches logged
+// workouts — only which day-type label past/future calendar dates show.
+async function resetProgramHistory() {
+  return saving(async () => {
+    const ps = await getProgramState();
+    const pattern = (ps.pattern || []).slice();
+    const fresh = [{ id: uid(), pattern, effectiveFrom: todayDateStr(), createdAt: nowISO() }];
+    await db.put(STORES.KV, { key: KV_PROGRAM_HISTORY, list: fresh });
+    return fresh;
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Exercise order — per-type array of exercise ids controlling display/log
 // order. Any exercise id not present in the array falls back to its natural
@@ -2395,7 +2416,7 @@ const storage = {
   getActiveWorkout, saveActiveWorkout, deleteActiveWorkout,
   getCustomExercises, addCustomExercise, deleteCustomExercise, updateCustomExercise,
   getProgramOverrides, setProgramOverride, restoreProgramExercise,
-  getProgramHistory, commitProgramPatternChange, updateCurrentVersionAnchor, deleteProgramHistoryEntry,
+  getProgramHistory, commitProgramPatternChange, updateCurrentVersionAnchor, deleteProgramHistoryEntry, resetProgramHistory,
   getExerciseOrder, setExerciseOrder,
   getScheduleOverrides, setScheduleOverride,
   exportAllData, markBackupComplete, importAllData, resetAllData,
@@ -2961,7 +2982,7 @@ function textInputModal({ title, label, placeholder = "", initialValue = "", con
 
 // Generic single date-field input modal (e.g. "Move this workout to...").
 // Resolves to the entered "YYYY-MM-DD" string, or undefined if cancelled.
-function dateInputModal({ title, body, label, initialValue }) {
+function dateInputModal({ title, body, label, initialValue, confirmLabel = "Next" }) {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "modal-overlay";
@@ -2975,7 +2996,7 @@ function dateInputModal({ title, body, label, initialValue }) {
         </div>
         <div class="btn-row" style="margin-top:16px;">
           <button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button>
-          <button class="btn btn-primary" data-act="confirm" type="button">Next</button>
+          <button class="btn btn-primary" data-act="confirm" type="button">${escapeHtml(confirmLabel)}</button>
         </div>
       </div>`;
     modalRoot.appendChild(overlay);
@@ -4903,7 +4924,8 @@ async function renderSchedule(container, navigate) {
         `;
       }).join("") : `<p class="text-faint" style="margin:0;">No history yet.</p>`}
     </div>
-    <p class="text-faint" style="margin:10px 0 22px;">A pattern shown as letters uses your day-type keys (e.g. U/L/R) — check Training Sequence above for what each one means today.</p>
+    <p class="text-faint" style="margin:10px 0 10px;">A pattern shown as letters uses your day-type keys (e.g. U/L/R) — check Training Sequence above for what each one means today.</p>
+    ${programHistory.length > 1 ? `<button class="link-btn" id="reset-history-btn" style="color:var(--c-crimson-bright); margin-bottom:22px;">Reset Program History</button>` : ""}
 
     <div class="section-title"><h2>Cycle Start Date</h2></div>
     <div class="card">
@@ -5012,6 +5034,19 @@ async function renderSchedule(container, navigate) {
       toast("Scheduled change cancelled");
       renderSchedule(container, navigate);
     });
+  });
+
+  qs("#reset-history-btn", container)?.addEventListener("click", async () => {
+    const ok = await confirmModal({
+      title: "Reset Program History?",
+      body: "This clears every past and scheduled entry above and replaces them with a single clean one: your current pattern, effective today. Use this if the list above looks wrong or a scheduled change never took effect. It never touches your logged workouts — only which day-type past or future calendar dates show.",
+      confirmLabel: "Reset History",
+      danger: true,
+    });
+    if (!ok) return;
+    await storage.resetProgramHistory();
+    toast("Program history reset");
+    renderSchedule(container, navigate);
   });
 
   qs("#shift-back-btn", container)?.addEventListener("click", async () => {
