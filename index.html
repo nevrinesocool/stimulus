@@ -3923,32 +3923,44 @@ function rewireExerciseCard(container, workout, exerciseId) {
 }
 
 // ---------------------------------------------------------------------------
-// Exercise substitution (item 16) — swap in a different exercise from the
-// same day type for just this workout. Historical workouts are unaffected;
-// checking "apply permanently" also hides the old exercise from future
-// workouts and gives the new one its slot in the program order.
+// Exercise substitution (item 16) — swap in a different exercise for just
+// this workout, either picked from the same day type's existing list or
+// typed in fresh (e.g. the machine's taken, you're at a different gym, or
+// this day type only has one exercise so there was nothing to pick from
+// before). Historical workouts are unaffected; checking "apply permanently"
+// also hides the old exercise from future workouts and gives the new one
+// its slot in the program order — for a typed name, it also adds it to your
+// exercise catalog so it behaves like any other exercise from then on.
 // ---------------------------------------------------------------------------
 function openSubstituteModal(container, workout, exerciseId, navigate) {
   const entry = workout.exercises.find((e) => e.exerciseId === exerciseId);
   if (!entry) return;
   const options = (PROGRAM[workout.type]?.exercises || []).filter((e) => e.id !== exerciseId);
-  if (!options.length) {
-    toast("No other exercises in this workout type to substitute with");
-    return;
-  }
+  const CUSTOM_VALUE = "__custom__";
 
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.innerHTML = `
     <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="sub-modal-title">
       <h3 id="sub-modal-title">Substitute ${escapeHtml(entry.name)}</h3>
-      <div class="field">
-        <label for="sub-select">Replace with</label>
-        <select id="sub-select" style="width:100%; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:10px; font-size:14px;">
-          ${options.map((o) => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join("")}
-        </select>
+      ${options.length ? `
+        <div class="field">
+          <label for="sub-select">Replace with</label>
+          <select id="sub-select" style="width:100%; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:10px; font-size:14px;">
+            ${options.map((o) => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join("")}
+            <option value="${CUSTOM_VALUE}">✎ Type a different exercise…</option>
+          </select>
+        </div>
+      ` : `<p class="text-faint" style="margin-top:0;">No other exercises are set up for this day type — type the one you're using instead.</p>`}
+      <div class="field" id="sub-custom-wrap" style="${options.length ? "display:none;" : ""} margin-bottom:0;">
+        <label for="sub-custom-name">Exercise name</label>
+        <input type="text" id="sub-custom-name" placeholder="e.g. Trap Bar Deadlift" autocomplete="off">
+        <label class="text-dim" style="display:flex; align-items:center; gap:8px; font-size:13px; margin-top:10px;">
+          <input type="checkbox" id="sub-custom-uni">
+          <span>Track each side separately (unilateral)</span>
+        </label>
       </div>
-      <label class="text-dim" style="display:flex; align-items:flex-start; gap:8px; font-size:13px; margin-top:6px;">
+      <label class="text-dim" style="display:flex; align-items:flex-start; gap:8px; font-size:13px; margin-top:14px;">
         <input type="checkbox" id="sub-permanent" style="margin-top:3px;">
         <span>Also replace it in my program for future workouts (this workout's history stays as recorded either way)</span>
       </label>
@@ -3962,15 +3974,37 @@ function openSubstituteModal(container, workout, exerciseId, navigate) {
   function close() { overlay.remove(); }
   overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
   overlay.querySelector('[data-act="cancel"]').addEventListener("click", close);
-  overlay.querySelector('[data-act="confirm"]').addEventListener("click", async () => {
-    const newId = qs("#sub-select", overlay).value;
-    const makePermanent = qs("#sub-permanent", overlay).checked;
-    const newDef = options.find((o) => o.id === newId);
-    if (!newDef) { close(); return; }
 
+  const select = qs("#sub-select", overlay);
+  const customWrap = qs("#sub-custom-wrap", overlay);
+  if (select) {
+    select.addEventListener("change", () => {
+      customWrap.style.display = select.value === CUSTOM_VALUE ? "" : "none";
+    });
+  }
+
+  overlay.querySelector('[data-act="confirm"]').addEventListener("click", async () => {
+    const usingCustom = !select || select.value === CUSTOM_VALUE;
+    const makePermanent = qs("#sub-permanent", overlay).checked;
     const oldId = entry.exerciseId;
     const oldName = entry.name;
     const setCount = entry.sets.length;
+
+    let newDef;
+    if (usingCustom) {
+      const typedName = qs("#sub-custom-name", overlay).value.trim();
+      if (!typedName) { toast("Enter a name for the exercise"); return; }
+      const isUni = qs("#sub-custom-uni", overlay).checked;
+      const slug = typedName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      newDef = { id: `custom-${slug || "exercise"}-${uid().slice(0, 6)}`, name: typedName, type: workout.type, sets: setCount, unilateral: isUni, muscles: [], createdAt: nowISO() };
+      // Only add it to the persistent catalog if this is meant to stick —
+      // otherwise it's a one-workout stand-in that just lives in this
+      // entry, same as any other exercise's data does.
+      if (makePermanent) await storage.addCustomExercise(newDef);
+    } else {
+      newDef = options.find((o) => o.id === select.value);
+      if (!newDef) { close(); return; }
+    }
 
     entry.exerciseId = newDef.id;
     entry.name = newDef.name;

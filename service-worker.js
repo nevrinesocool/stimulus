@@ -14,7 +14,7 @@
 // deleted on the next activate like any other version bump.
 // ============================================================================
 
-const CACHE_VERSION = "v19";
+const CACHE_VERSION = "v20";
 const CACHE_NAME = `stimulus-shell-${CACHE_VERSION}`;
 
 // Paths are relative to this file's own location so the app works correctly
