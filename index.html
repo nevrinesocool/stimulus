@@ -1168,12 +1168,17 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-// ---- RIR (Reps In Reserve) — 0, 1, or 2 only. There is no "train to
-// failure" option: RIR 0 already means no reps left in reserve. ----
+// ---- RIR (Reps In Reserve) — Failure, 0, 1, 2, or 2+. "Failure" is kept
+// distinct from RIR 0: RIR 0 means "no more reps left in reserve, but I
+// could still complete the one I just did," while Failure means the set
+// ended because a rep couldn't be finished. "2+" covers anything looser
+// than RIR 2 without asking the user to pick an exact number. ----
 const RIR_OPTIONS = [
-  { value: "2", label: "2" },
-  { value: "1", label: "1" },
+  { value: "failure", label: "Failure" },
   { value: "0", label: "0" },
+  { value: "1", label: "1" },
+  { value: "2", label: "2" },
+  { value: "2+", label: "2+" },
 ];
 
 // ---- per-exercise weight unit preference ----
@@ -6235,6 +6240,33 @@ function extractSetsReps(line) {
   return null;
 }
 
+// Extracts a per-exercise rest duration (in seconds) from one program line,
+// keyed off the word "rest" so it can never be confused with a sets/reps
+// count. Tried in order: "rest 2:00" (mm:ss), "rest 90s" / "rest 90 sec",
+// "rest 2min" / "rest 1.5 minutes", then a bare "rest 90" with no unit —
+// for the bare case, 10-or-under is read as minutes and anything above
+// that as seconds, since that matches how people actually shorthand rest
+// ("rest 2" means 2:00, "rest 90" means 0:90). Returns null if the line
+// has no "rest" mention at all.
+function extractRest(line) {
+  const mmss = line.match(/\brest\s*:?\s*(\d+)\s*:\s*([0-5]\d)\b/i);
+  if (mmss) return { seconds: parseInt(mmss[1], 10) * 60 + parseInt(mmss[2], 10), text: mmss[0] };
+
+  const mins = line.match(/\brest\s*:?\s*(\d+(?:\.\d+)?)\s*(?:min(?:ute)?s?|m)\b/i);
+  if (mins) return { seconds: Math.round(parseFloat(mins[1]) * 60), text: mins[0] };
+
+  const secs = line.match(/\brest\s*:?\s*(\d+)\s*(?:sec(?:ond)?s?|s)\b/i);
+  if (secs) return { seconds: parseInt(secs[1], 10), text: secs[0] };
+
+  const bare = line.match(/\brest\s*:?\s*(\d+)\b/i);
+  if (bare) {
+    const n = parseInt(bare[1], 10);
+    return { seconds: n <= 10 ? n * 60 : n, text: bare[0] };
+  }
+
+  return null;
+}
+
 // Parses free-typed program text into { [dayTypeKey]: [...] } for the
 // current PROGRAM_DAY_TYPES. A day type's label or key on its own line
 // switches which section following exercise lines fall into (starts in the
@@ -6246,7 +6278,12 @@ function extractSetsReps(line) {
 // set the set count (default 2) and, where a rep number/range is present,
 // the target reps shown alongside it later. The word "unilateral" (or
 // "uni", "single-arm", etc.) anywhere in the line marks it unilateral and
-// gets stripped from the name.
+// gets stripped from the name. A "rest" mention ("rest 90s", "rest 2min",
+// "rest 2:00") sets that exercise's per-exercise rest timer override
+// (see extractRest) and is likewise stripped from the name; exercises with
+// no "rest" mention keep using the global rest timer default. Note: RIR is
+// not part of this text — it's logged per set during a workout, not
+// planned ahead of time, so there's nothing to parse here for it.
 function parseProgramText(text) {
   const lines = (text || "").split("\n").map((l) => l.trim()).filter(Boolean);
   const result = {};
@@ -6273,7 +6310,14 @@ function parseProgramText(text) {
     const uniMatch = line.match(/[\(\[]?\s*\b(unilateral|uni|single[- ]arm|single[- ]leg|one[- ]arm|one[- ]leg)\b\s*[\)\]]?/i);
     if (uniMatch) {
       unilateral = true;
-      line = line.replace(uniMatch[0], "");
+      // Replace with a single space, not "": the match's \s* eats the
+      // whitespace on BOTH sides of the word, so stripping it to nothing
+      // glues whatever came before and after together (e.g. "12-15
+      // unilateral rest 60s" -> "12-15rest 60s", which then breaks both
+      // the reps-range and the rest-time parsing below). A space keeps
+      // them separated; the later whitespace cleanup on `name` collapses
+      // any doubled-up spaces this leaves behind.
+      line = line.replace(uniMatch[0], " ");
     }
 
     let sets = 2;
@@ -6285,6 +6329,13 @@ function parseProgramText(text) {
       line = line.replace(setsReps.text, "");
     }
 
+    let restSeconds = null;
+    const rest = extractRest(line);
+    if (rest) {
+      restSeconds = rest.seconds;
+      line = line.replace(rest.text, "");
+    }
+
     const name = line
       .replace(/^[-*•\d.\)]+\s*/, "")
       .replace(/[-–,:]+\s*$/, "")
@@ -6292,7 +6343,7 @@ function parseProgramText(text) {
       .trim();
 
     if (!name) continue;
-    result[section].push({ name, sets: Math.max(1, Math.min(10, sets || 2)), unilateral, reps });
+    result[section].push({ name, sets: Math.max(1, Math.min(10, sets || 2)), unilateral, reps, restSeconds });
   }
   return result;
 }
@@ -6370,14 +6421,14 @@ async function renderProgramOverview(container, navigate) {
 
     <div class="section-title"><h2>Paste Whole Program</h2></div>
     <div class="card">
-      <p class="text-faint" style="margin-top:0;">Type or paste your whole routine at once. Put a day type name (${PROGRAM_DAY_TYPES.map((dt) => `"${escapeHtml(dt.label)}"`).join(" / ")}) on its own line to switch sections — a little decoration around it is fine ("## Upper ##", "Lower Day 1:"). Add sets/reps like "4x10", "3 sets", or "4 sets of 8-12", and the word "unilateral" to mark one-side-at-a-time exercises.</p>
+      <p class="text-faint" style="margin-top:0;">Type or paste your whole routine at once. Put a day type name (${PROGRAM_DAY_TYPES.map((dt) => `"${escapeHtml(dt.label)}"`).join(" / ")}) on its own line to switch sections — a little decoration around it is fine ("## Upper ##", "Lower Day 1:"). Add sets/reps like "4x10", "3 sets", or "4 sets of 8-12", the word "unilateral" to mark one-side-at-a-time exercises, and "rest 90s" / "rest 2min" / "rest 2:00" to give that exercise its own rest timer instead of using your default.</p>
       <div class="field" style="margin-bottom:10px;">
         <textarea id="bulk-program-text" rows="9" placeholder="${PROGRAM_DAY_TYPES[0]?.label || "Day 1"}
-Bench Press 4x10
-Lateral Raise 3x12-15 unilateral
+Bench Press 4x10 rest 2:30
+Lateral Raise 3x12-15 unilateral rest 60s
 
 ${PROGRAM_DAY_TYPES[1]?.label || "Day 2"}
-Back Squat 4x8
+Back Squat 4x8 rest 3min
 Bulgarian Split Squat 3x10 unilateral"></textarea>
       </div>
       <div id="bulk-program-preview" style="margin-bottom:12px;"></div>
@@ -6572,7 +6623,7 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
           <div style="margin-bottom:6px;">
             <span class="text-dim" style="font-size:12.5px; font-weight:600;">${escapeHtml(dt.label)}</span>
             <ul style="margin:2px 0 0; padding-left:18px; font-size:12.5px; color:var(--c-off-dim);">
-              ${parsed[dt.key].map((ex) => `<li>${escapeHtml(ex.name)} — ${ex.sets} sets${ex.reps ? ` × ${escapeHtml(ex.reps)} reps` : ""}${ex.unilateral ? " (unilateral)" : ""}</li>`).join("")}
+              ${parsed[dt.key].map((ex) => `<li>${escapeHtml(ex.name)} — ${ex.sets} sets${ex.reps ? ` × ${escapeHtml(ex.reps)} reps` : ""}${ex.unilateral ? " (unilateral)" : ""}${ex.restSeconds ? ` · rest ${restTimerTimeLabel(ex.restSeconds)}` : ""}</li>`).join("")}
             </ul>
           </div>`).join("")}
       </div>`;
@@ -6605,13 +6656,24 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
     for (const c of existing) {
       await storage.deleteCustomExercise(c.id);
     }
+    // Exercises with no "rest ..." in their line keep using the global
+    // default (getExerciseRestSeconds falls back to it), so only lines
+    // that actually specified a rest get an entry in this map.
+    const restOverrides = {};
     for (const dt of PROGRAM_DAY_TYPES) {
       for (const ex of (parsed[dt.key] || [])) {
         const slug = ex.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
         const id = `custom-${slug || "exercise"}-${uid().slice(0, 6)}`;
         await storage.addCustomExercise({ id, name: ex.name, type: dt.key, sets: ex.sets, unilateral: ex.unilateral, targetReps: ex.reps || null, createdAt: nowISO() });
+        if (ex.restSeconds) restOverrides[id] = ex.restSeconds;
       }
     }
+    // Apply just deleted the whole previous exercise list, so any old
+    // per-exercise rest overrides (keyed to those now-gone ids) are dead
+    // weight — replace the map outright rather than merging into it, even
+    // when this paste didn't specify "rest" for anything.
+    cachedSettings.exerciseRestSeconds = restOverrides;
+    await storage.saveSettings({ exerciseRestSeconds: restOverrides });
     applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
     toast(`Program updated — ${total} exercises added`);
     renderProgramOverview(container, navigate);
