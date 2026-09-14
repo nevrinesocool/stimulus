@@ -24,8 +24,8 @@
   --c-charcoal:      #121010;
   --c-panel:         #181414;
   --c-panel-raised:  #1e1a1a;
-  --c-hairline:      rgba(237,230,219,0.10);
-  --c-hairline-strong: rgba(237,230,219,0.18);
+  --c-hairline:      rgba(237,230,219,0.16);
+  --c-hairline-strong: rgba(237,230,219,0.30);
   --c-blood:         #5c1420;
   --c-crimson:       #a53347;
   --c-crimson-bright:#c9455c;
@@ -35,6 +35,24 @@
   --c-gold:          #b7924f;
   --c-positive:      #7c9473;
   --c-warn:          #c9a23f;
+
+  /* --- type scale --- */
+  /* Consolidates what used to be ~19 near-duplicate one-off sizes (10 vs
+     10.5, 12 vs 12.5, 13 vs 13.5, ...) scattered across the stylesheet into
+     8 deliberate steps. Each step below folds in its former near-duplicates
+     via a <=1px nudge, chosen toward whichever value was already more
+     common, so this is a consolidation rather than a visual redesign. Large
+     "hero" numbers (stat boxes, the cardio timer, page titles) are
+     intentionally left as their own bespoke sizes below this range — those
+     are one-off display moments, not part of the running text scale. */
+  --fs-2xs: 10px;
+  --fs-xs:  11px;
+  --fs-sm:  12px;
+  --fs-md:  13px;
+  --fs-lg:  14px;
+  --fs-xl:  15px;
+  --fs-2xl: 16px;
+  --fs-3xl: 18px;
 
   /* --- type --- */
   --f-display: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
@@ -71,7 +89,7 @@ body{
   background-attachment: fixed;
   color: var(--c-off);
   font-family: var(--f-body);
-  font-size: 16px;
+  font-size: var(--fs-2xl);
   line-height: 1.45;
   min-height: 100dvh;
   position: relative;
@@ -124,7 +142,7 @@ a{ color: var(--c-crimson-bright); }
 
 .eyebrow{
   font-family: var(--f-body);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--c-off-faint);
@@ -158,10 +176,10 @@ body.pre-auth .bottom-nav{ display: none; }
 }
 
 .brand{ display:flex; align-items:center; gap:8px; }
-.brand-mark{ color: var(--c-crimson); font-size: 14px; }
+.brand-mark{ color: var(--c-crimson); font-size: var(--fs-lg); }
 .brand-name{
   font-family: var(--f-display);
-  font-size: 19px;
+  font-size: var(--fs-3xl);
   letter-spacing: 0.22em;
   font-weight: 700;
   color: var(--c-off);
@@ -169,7 +187,7 @@ body.pre-auth .bottom-nav{ display: none; }
 
 .save-indicator{
   display:flex; align-items:center; gap:6px;
-  font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  font-size: var(--fs-xs); letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--c-off-faint);
   transition: opacity 0.3s ease;
 }
@@ -180,11 +198,11 @@ body.pre-auth .bottom-nav{ display: none; }
 .save-indicator[data-state="saving"] .dot{ background: var(--c-warn); }
 .save-indicator[data-state="saving"] .label::before{ content:"Saving…"; }
 .save-indicator[data-state="saving"] .label{ font-size:0; }
-.save-indicator[data-state="saving"] .label::before{ font-size: 11px; }
+.save-indicator[data-state="saving"] .label::before{ font-size: var(--fs-xs); }
 .save-indicator[data-state="saved"] .dot{ background: var(--c-positive); }
 .save-indicator[data-state="idle"]{ opacity: 0.55; }
 .save-indicator[data-state="error"] .dot{ background: var(--c-crimson-bright); }
-.save-indicator[data-state="error"] .label::before{ content:"Save failed"; font-size:11px; }
+.save-indicator[data-state="error"] .label::before{ content:"Save failed"; font-size: var(--fs-xs); }
 .save-indicator[data-state="error"] .label{ font-size:0; }
 
 .app-main{
@@ -256,14 +274,14 @@ body.pre-auth .bottom-nav{ display: none; }
 }
 .rest-timer-time{
   position: relative;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 700;
   color: var(--c-off);
 }
 .rest-timer-mid{ flex:1; min-width:0; }
 .rest-timer-mid .eyebrow{ margin-bottom: 1px; }
 .rest-timer-label{
-  font-size: 13px;
+  font-size: var(--fs-md);
   color: var(--c-off-dim);
   white-space: nowrap;
   overflow: hidden;
@@ -275,7 +293,7 @@ body.pre-auth .bottom-nav{ display: none; }
   border: 1px solid var(--c-hairline-strong);
   color: var(--c-off);
   border-radius: var(--radius-sm);
-  font-size: 11.5px;
+  font-size: var(--fs-xs);
   font-weight: 600;
   padding: 7px 9px;
   line-height: 1;
@@ -286,7 +304,7 @@ body.pre-auth .bottom-nav{ display: none; }
   border-color: var(--c-crimson);
   min-width: 30px;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 .rt-btn-skip{ color: var(--c-off-faint); }
 
@@ -297,7 +315,7 @@ body.pre-auth .bottom-nav{ display: none; }
   gap: 4px;
   background: none; border: none;
   color: var(--c-off-faint);
-  font-size: 10.5px;
+  font-size: var(--fs-2xs);
   letter-spacing: 0.03em;
   padding: 6px 2px;
   min-height: 48px;
@@ -316,12 +334,13 @@ body.pre-auth .bottom-nav{ display: none; }
 }
 .nav-btn[aria-current="page"]::before{ transform: translateX(-50%) scaleX(1); }
 .nav-icon{
-  font-size: 17px; line-height:1;
+  font-size: var(--fs-3xl); line-height:1;
   display:inline-flex; align-items:center; justify-content:center;
   width: 32px; height: 24px;
   border-radius: 10px;
   transition: background-color 0.22s ease, color 0.22s ease, transform 0.15s ease;
 }
+.nav-icon svg{ width: 20px; height: 20px; display:block; }
 .nav-btn[aria-current="page"]{ color: var(--c-off); }
 .nav-btn[aria-current="page"] .nav-icon{
   color: var(--c-crimson-bright);
@@ -355,7 +374,7 @@ body.pre-auth .bottom-nav{ display: none; }
   margin: 26px 0 10px;
 }
 .section-title h2{
-  font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase;
+  font-size: var(--fs-xl); letter-spacing: 0.08em; text-transform: uppercase;
   position: relative; padding-left: 12px;
 }
 .section-title h2::before{
@@ -364,11 +383,11 @@ body.pre-auth .bottom-nav{ display: none; }
   width:3px; border-radius:2px;
   background: var(--c-crimson);
 }
-.section-title .link-btn{ font-size: 12px; }
+.section-title .link-btn{ font-size: var(--fs-sm); }
 
 .link-btn{
   background:none; border:none; color: var(--c-crimson-bright);
-  padding: 4px 0; font-size: 13px; font-weight:600;
+  padding: 4px 0; font-size: var(--fs-md); font-weight:600;
 }
 
 .btn{
@@ -378,7 +397,7 @@ body.pre-auth .bottom-nav{ display: none; }
   background: var(--c-panel-raised);
   color: var(--c-off);
   padding: 13px 18px;
-  font-size: 14.5px;
+  font-size: var(--fs-lg);
   font-weight: 600;
   letter-spacing: 0.02em;
   min-height: 48px;
@@ -399,14 +418,14 @@ body.pre-auth .bottom-nav{ display: none; }
 .btn-ghost:hover{ background: var(--c-hover); }
 .btn-danger{ border-color: var(--c-crimson); color: var(--c-crimson-bright); background: transparent; }
 .btn-danger:hover{ background: rgba(165,51,71,0.10); }
-.btn-sm{ padding: 9px 14px; min-height: 38px; font-size: 13px; width: auto; }
+.btn-sm{ padding: 9px 14px; min-height: 38px; font-size: var(--fs-md); width: auto; }
 .btn-row{ display:flex; gap:10px; }
 .btn-row .btn{ width: auto; flex:1; }
 .btn:disabled{ opacity: 0.4; }
 
 .badge{
   display:inline-flex; align-items:center;
-  font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  font-size: var(--fs-2xs); letter-spacing: 0.08em; text-transform: uppercase;
   padding: 3px 7px; border-radius: 20px;
   border: 1px solid var(--c-hairline-strong);
   color: var(--c-off-dim);
@@ -421,8 +440,8 @@ body.pre-auth .bottom-nav{ display: none; }
   color: var(--c-off-faint);
 }
 .empty-state .glyph{ font-size: 26px; color: var(--c-crimson); margin-bottom: 12px; display:block; }
-.empty-state h3{ font-size: 16px; color: var(--c-off); margin-bottom: 6px; }
-.empty-state p{ font-size: 13.5px; margin:0; max-width: 320px; margin-inline:auto; }
+.empty-state h3{ font-size: var(--fs-2xl); color: var(--c-off); margin-bottom: 6px; }
+.empty-state p{ font-size: var(--fs-md); margin:0; max-width: 320px; margin-inline:auto; }
 
 .divider{ height:1px; background: var(--c-hairline); border:none; margin: 14px 0; }
 
@@ -434,17 +453,17 @@ body.pre-auth .bottom-nav{ display: none; }
   padding: 12px;
 }
 .stat-box .stat-value{ font-family: var(--f-mono); font-size: 20px; color: var(--c-off); }
-.stat-box .stat-label{ font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--c-off-faint); margin-top: 4px; }
+.stat-box .stat-label{ font-size: var(--fs-2xs); letter-spacing: 0.06em; text-transform: uppercase; color: var(--c-off-faint); margin-top: 4px; }
 
 .field{ margin-bottom: 14px; }
-.field label{ display:block; font-size: 12px; letter-spacing: 0.04em; color: var(--c-off-dim); margin-bottom: 6px; }
+.field label{ display:block; font-size: var(--fs-sm); letter-spacing: 0.04em; color: var(--c-off-dim); margin-bottom: 6px; }
 .field input[type="text"], .field input[type="number"], .field textarea, .field select{
   width: 100%;
   background: var(--c-charcoal);
   border: 1px solid var(--c-hairline-strong);
   border-radius: var(--radius-md);
   padding: 11px 12px;
-  font-size: 15px;
+  font-size: var(--fs-xl);
   color: var(--c-off);
   min-height: 46px;
 }
@@ -456,7 +475,7 @@ body.pre-auth .bottom-nav{ display: none; }
 
 .toggle-row{ display:flex; border: 1px solid var(--c-hairline-strong); border-radius: var(--radius-md); overflow:hidden; }
 .toggle-row button{
-  flex:1; padding: 11px; background: var(--c-charcoal); border:none; color: var(--c-off-dim); font-size: 13.5px; font-weight:600;
+  flex:1; padding: 11px; background: var(--c-charcoal); border:none; color: var(--c-off-dim); font-size: var(--fs-md); font-weight:600;
 }
 .toggle-row button.active{ background: var(--c-blood); color: var(--c-off); }
 
@@ -467,7 +486,7 @@ body.pre-auth .bottom-nav{ display: none; }
   border: 1px solid var(--c-hairline-strong);
   border-radius: var(--radius-md);
   padding: 8px 8px;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--c-off);
   width: 100%;
 }
@@ -476,18 +495,18 @@ body.pre-auth .bottom-nav{ display: none; }
    History calendar grid
    ========================================================================== */
 
-.cal-weekdays{ display:grid; grid-template-columns: repeat(7, 1fr); text-align:center; font-size:11px; color: var(--c-off-faint); margin-bottom:6px; }
+.cal-weekdays{ display:grid; grid-template-columns: repeat(7, 1fr); text-align:center; font-size: var(--fs-xs); color: var(--c-off-faint); margin-bottom:6px; }
 .cal-grid{ display:grid; grid-template-columns: repeat(7, 1fr); gap:4px; }
 .cal-cell{
   aspect-ratio: 1; border-radius: var(--radius-sm); border: 1px solid var(--c-hairline);
   display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
-  font-size:11px; color: var(--c-off-dim); background: var(--c-panel);
+  font-size: var(--fs-xs); color: var(--c-off-dim); background: var(--c-panel);
 }
 .cal-cell.cal-empty{ border-color: transparent; background: none; }
 .cal-cell.cal-done{ background: var(--c-blood); border-color: var(--c-blood); color: var(--c-off); }
 .cal-cell.cal-partial{ background: var(--c-panel-raised); border-color: var(--c-crimson); color: var(--c-off); }
-.cal-daynum{ font-size:11px; opacity:0.85; }
-.cal-tag{ font-size:10px; font-weight:700; letter-spacing:0.03em; }
+.cal-daynum{ font-size: var(--fs-xs); opacity:0.85; }
+.cal-tag{ font-size: var(--fs-2xs); font-weight:700; letter-spacing:0.03em; }
 
 /* ==========================================================================
    Toasts + modal
@@ -504,13 +523,13 @@ body.pre-auth .bottom-nav{ display: none; }
   color: var(--c-off);
   padding: 11px 16px;
   border-radius: 30px;
-  font-size: 13.5px;
+  font-size: var(--fs-md);
   box-shadow: var(--shadow-lift);
   max-width: 88vw;
   display:flex; align-items:center; gap: 10px;
   animation: toast-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-.toast .undo-btn{ background:none;border:none;color:var(--c-crimson-bright);font-weight:700;font-size:13px; }
+.toast .undo-btn{ background:none;border:none;color:var(--c-crimson-bright);font-weight:700;font-size: var(--fs-md); }
 @keyframes toast-in{ from{ opacity:0; transform: translateY(-10px) scale(0.96);} to{opacity:1; transform:translateY(0) scale(1);} }
 
 .modal-overlay{
@@ -531,8 +550,8 @@ body.pre-auth .bottom-nav{ display: none; }
   animation: sheet-up 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 @keyframes sheet-up{ from{ transform: translateY(28px); opacity: 0.5;} to{ transform: translateY(0); opacity:1;} }
-.modal-sheet h3{ font-size: 17px; margin-bottom: 8px; }
-.modal-sheet p{ color: var(--c-off-dim); font-size: 14px; line-height:1.55; }
+.modal-sheet h3{ font-size: var(--fs-3xl); margin-bottom: 8px; }
+.modal-sheet p{ color: var(--c-off-dim); font-size: var(--fs-lg); line-height:1.55; }
 
 /* ==========================================================================
    Dashboard
@@ -551,16 +570,16 @@ body.pre-auth .bottom-nav{ display: none; }
   position:absolute; right: -6px; top:-10px; font-size: 90px;
   color: rgba(165,51,71,0.08);
 }
-.hero-eyebrow{ font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:var(--c-off-faint); }
+.hero-eyebrow{ font-size: var(--fs-xs); letter-spacing:0.14em; text-transform:uppercase; color:var(--c-off-faint); }
 .hero-title{ font-size: 30px; margin-top: 6px; letter-spacing: 0.03em; }
-.hero-sub{ color: var(--c-off-dim); font-size: 13.5px; margin-top: 6px; }
+.hero-sub{ color: var(--c-off-dim); font-size: var(--fs-md); margin-top: 6px; }
 .hero-actions{ margin-top: 18px; display:flex; gap:10px; }
 
 .seal{
   width: 46px; height:46px; border-radius:50%;
   border: 2px solid var(--c-gold);
   display:flex; align-items:center; justify-content:center;
-  font-family: var(--f-display); font-size: 18px; color: var(--c-gold);
+  font-family: var(--f-display); font-size: var(--fs-3xl); color: var(--c-gold);
   flex-shrink:0;
   position: relative;
 }
@@ -571,8 +590,8 @@ body.pre-auth .bottom-nav{ display: none; }
 
 .pr-row{ display:flex; align-items:center; gap:12px; padding: 10px 0; border-bottom: 1px solid var(--c-hairline); }
 .pr-row:last-child{ border-bottom:none; }
-.pr-row .pr-name{ font-weight:600; font-size:14px; }
-.pr-row .pr-detail{ font-size:12.5px; color: var(--c-off-faint); }
+.pr-row .pr-name{ font-weight:600; font-size: var(--fs-lg); }
+.pr-row .pr-detail{ font-size: var(--fs-sm); color: var(--c-off-faint); }
 
 .history-item{
   transition: background-color 0.15s ease;
@@ -584,8 +603,8 @@ body.pre-auth .bottom-nav{ display: none; }
 .history-item:last-child{ border-bottom:none; }
 .history-item .h-index{ font-family: var(--f-display); font-size: 20px; color: var(--c-off-faint); width: 30px; }
 .history-item .h-body{ flex:1; }
-.history-item .h-title{ font-weight:600; font-size: 14.5px; display:flex; gap:8px; align-items:center; }
-.history-item .h-meta{ font-size: 12px; color: var(--c-off-faint); margin-top: 2px; }
+.history-item .h-title{ font-weight:600; font-size: var(--fs-lg); display:flex; gap:8px; align-items:center; }
+.history-item .h-meta{ font-size: var(--fs-sm); color: var(--c-off-faint); margin-top: 2px; }
 .history-item .h-chevron{ color: var(--c-off-faint); }
 
 /* ==========================================================================
@@ -605,10 +624,10 @@ body.pre-auth .bottom-nav{ display: none; }
 
 .exercise-card{ }
 .exercise-card .ex-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
-.exercise-card .ex-name{ font-size: 16px; font-weight:700; font-family: var(--f-display); }
-.exercise-card .ex-sub{ font-size: 11.5px; color: var(--c-off-faint); margin-top:3px; display:flex; gap:8px; flex-wrap:wrap;}
+.exercise-card .ex-name{ font-size: var(--fs-2xl); font-weight:700; font-family: var(--f-display); }
+.exercise-card .ex-sub{ font-size: var(--fs-xs); color: var(--c-off-faint); margin-top:3px; display:flex; gap:8px; flex-wrap:wrap;}
 .exercise-card .ex-prev{
-  font-size: 12px; color: var(--c-off-dim);
+  font-size: var(--fs-sm); color: var(--c-off-dim);
   background: var(--c-charcoal); border-radius: var(--radius-sm);
   padding: 8px 10px; margin: 10px 0; font-family: var(--f-mono);
 }
@@ -622,7 +641,7 @@ body.pre-auth .bottom-nav{ display: none; }
   width: 26px; height:26px; border-radius:50%; flex-shrink:0;
   border: 1px solid var(--c-hairline-strong);
   display:flex; align-items:center; justify-content:center;
-  font-family: var(--f-mono); font-size: 12px; color: var(--c-off-dim);
+  font-family: var(--f-mono); font-size: var(--fs-sm); color: var(--c-off-dim);
 }
 .set-row.completed .set-index{ background: var(--c-blood); border-color: var(--c-blood); color:var(--c-off); }
 .set-inputs{ display:flex; gap:6px; flex:1; }
@@ -630,16 +649,16 @@ body.pre-auth .bottom-nav{ display: none; }
   width: 100%; min-width: 0;
   background: var(--c-charcoal); border: 1px solid var(--c-hairline-strong);
   border-radius: var(--radius-sm); padding: 9px 6px; text-align:center;
-  font-family: var(--f-mono); font-size: 15px; color: var(--c-off);
+  font-family: var(--f-mono); font-size: var(--fs-xl); color: var(--c-off);
   min-height: 42px;
 }
-.set-unit-label{ font-size:10px; color:var(--c-off-faint); text-align:center; margin-top:2px; letter-spacing:0.04em; }
-.set-side-label{ font-size: 10px; color: var(--c-off-faint); text-align:center; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:2px; }
+.set-unit-label{ font-size: var(--fs-2xs); color:var(--c-off-faint); text-align:center; margin-top:2px; letter-spacing:0.04em; }
+.set-side-label{ font-size: var(--fs-2xs); color: var(--c-off-faint); text-align:center; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:2px; }
 .set-col{ flex:1; min-width:0; }
 .set-complete-btn{
   width: 42px; height:42px; border-radius: 50%; flex-shrink:0;
   border: 1px solid var(--c-hairline-strong); background: var(--c-charcoal);
-  color: var(--c-off-faint); font-size: 17px;
+  color: var(--c-off-faint); font-size: var(--fs-3xl);
 }
 .set-row.completed .set-complete-btn{ background: var(--c-positive); border-color: var(--c-positive); color:#0d0b0b; }
 .set-row.skipped .set-complete-btn{ background: var(--c-panel-raised); color: var(--c-off-faint); text-decoration: line-through; }
@@ -647,32 +666,34 @@ body.pre-auth .bottom-nav{ display: none; }
 
 .quick-row{ display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
 
-/* Per-exercise unit preference toggle, sits in the exercise card header */
-.unit-toggle{ width:auto; }
-.unit-toggle button{ padding: 6px 12px; font-size: 12px; min-height:0; }
-
 /* RIR chip row under each set */
 .rir-row{
   display:flex; align-items:center; gap:6px; flex-wrap:wrap;
   padding: 6px 0 10px 34px; margin-top:-2px;
 }
-.rir-label{ font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:var(--c-off-faint); margin-right:2px; }
-.rir-chip{ padding: 5px 9px; font-size:11px; }
+.rir-label{ font-size: var(--fs-2xs); letter-spacing:0.06em; text-transform:uppercase; color:var(--c-off-faint); margin-right:2px; }
+.rir-chip{ padding: 5px 9px; font-size: var(--fs-xs); }
 .rir-chip.active{ background: var(--c-blood); border-color: var(--c-blood); color: var(--c-off); }
-.tempo-chip{ padding: 6px 11px; font-size:11.5px; }
+.tempo-chip{ padding: 6px 11px; font-size: var(--fs-xs); }
 .tempo-chip.active{ background: var(--c-positive); border-color: var(--c-positive); color: var(--c-black); }
 .tempo-chip.active.tempo-none{ background: var(--c-off-faint); border-color: var(--c-off-faint); }
 .chip-btn{
   border: 1px solid var(--c-hairline-strong); background: var(--c-charcoal);
-  color: var(--c-off-dim); border-radius: 20px; padding: 7px 12px; font-size: 12px;
+  color: var(--c-off-dim); border-radius: 20px; padding: 7px 12px; font-size: var(--fs-sm);
 }
 .chip-btn:active{ background: var(--c-panel-raised); }
+.icon-btn{
+  border: 1px solid var(--c-hairline-strong); background: var(--c-charcoal);
+  color: var(--c-off-dim); border-radius: 50%; width: 30px; height: 30px;
+  font-size: var(--fs-2xl); line-height: 1; display:flex; align-items:center; justify-content:center;
+}
+.icon-btn:active{ background: var(--c-panel-raised); }
 
 .cardio-card .cardio-timer{
   font-family: var(--f-mono); font-size: 44px; text-align:center; letter-spacing: 0.03em;
   padding: 10px 0 4px; color: var(--c-off);
 }
-.cardio-target{ text-align:center; font-size: 11.5px; color: var(--c-off-faint); letter-spacing:0.06em; text-transform:uppercase; }
+.cardio-target{ text-align:center; font-size: var(--fs-xs); color: var(--c-off-faint); letter-spacing:0.06em; text-transform:uppercase; }
 .timer-controls{ display:flex; gap:8px; margin-top: 14px; }
 .cardio-fields{ display:grid; grid-template-columns: repeat(3,1fr); gap:8px; margin-top: 12px; }
 
@@ -683,8 +704,8 @@ body.pre-auth .bottom-nav{ display: none; }
   padding: 16px;
   margin-bottom: 18px;
 }
-.resume-banner h3{ font-size:15px; margin-bottom:4px; }
-.resume-banner p{ font-size:12.5px; color: var(--c-off-dim); margin: 0 0 12px; }
+.resume-banner h3{ font-size: var(--fs-xl); margin-bottom:4px; }
+.resume-banner p{ font-size: var(--fs-sm); color: var(--c-off-dim); margin: 0 0 12px; }
 
 .choice-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
 .choice-card{
@@ -699,8 +720,8 @@ body.pre-auth .bottom-nav{ display: none; }
 }
 .choice-card:disabled{ opacity: 0.5; }
 .choice-card .choice-icon{ font-size:22px; color: var(--c-crimson); margin-bottom:8px; }
-.choice-card .choice-title{ font-family: var(--f-display); font-size:18px; }
-.choice-card .choice-sets{ font-size: 11.5px; color: var(--c-off-faint); margin: 4px 0 14px; }
+.choice-card .choice-title{ font-family: var(--f-display); font-size: var(--fs-3xl); }
+.choice-card .choice-sets{ font-size: var(--fs-xs); color: var(--c-off-faint); margin: 4px 0 14px; }
 
 .sequence-summary-card{
   text-align:center; background: var(--c-panel); border: 1px solid var(--c-hairline-strong);
@@ -709,15 +730,15 @@ body.pre-auth .bottom-nav{ display: none; }
 .sequence-chip-row{ display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px; }
 .sequence-chip{
   display:inline-block; background: var(--c-charcoal); border: 1px solid var(--c-hairline-strong);
-  border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight:600; color: var(--c-off);
+  border-radius: 8px; padding: 7px 12px; font-size: var(--fs-md); font-weight:600; color: var(--c-off);
 }
 .sequence-chip.is-rest{ color: var(--c-off-faint); border-style: dashed; font-weight:500; }
-.sequence-arrow{ color: var(--c-off-faint); font-size: 13px; }
+.sequence-arrow{ color: var(--c-off-faint); font-size: var(--fs-md); }
 .sequence-code{
   font-family: var(--f-mono); font-size: 20px; letter-spacing: 0.08em; color: var(--c-crimson-bright);
   margin-top: 14px;
 }
-.sequence-meaning{ font-size: 12.5px; margin-top: 4px; }
+.sequence-meaning{ font-size: var(--fs-sm); margin-top: 4px; }
 
 /* ==========================================================================
    Summary
@@ -726,7 +747,7 @@ body.pre-auth .bottom-nav{ display: none; }
 .summary-hero{ text-align:center; padding: 10px 0 20px; }
 .summary-hero .seal{ margin: 0 auto 14px; width:64px; height:64px; font-size:26px; }
 .summary-hero h1{ font-size: 26px; }
-.summary-hero .summary-type{ color: var(--c-off-faint); font-size: 13px; letter-spacing:0.1em; text-transform:uppercase; margin-top:4px; }
+.summary-hero .summary-type{ color: var(--c-off-faint); font-size: var(--fs-md); letter-spacing:0.1em; text-transform:uppercase; margin-top:4px; }
 
 /* ==========================================================================
    Charts (simple sparkline / bar)
@@ -734,7 +755,7 @@ body.pre-auth .bottom-nav{ display: none; }
 
 .chart-wrap{ padding: 6px 0; }
 .chart-wrap svg{ width:100%; height: 110px; display:block; }
-.trend-tag{ font-size:12px; letter-spacing:0.04em; }
+.trend-tag{ font-size: var(--fs-sm); letter-spacing:0.04em; }
 
 /* ==========================================================================
    Misc utility
@@ -743,13 +764,13 @@ body.pre-auth .bottom-nav{ display: none; }
 .flex-between{ display:flex; align-items:center; justify-content:space-between; }
 .mt-0{ margin-top:0; }
 .text-dim{ color: var(--c-off-dim); }
-.text-faint{ color: var(--c-off-faint); font-size: 12px; }
+.text-faint{ color: var(--c-off-faint); font-size: var(--fs-sm); }
 .text-center{ text-align:center; }
 .mb-16{ margin-bottom:16px; }
 
 .search-input{
   width:100%; background: var(--c-panel); border: 1px solid var(--c-hairline-strong);
-  border-radius: 30px; padding: 12px 16px; color: var(--c-off); font-size:14.5px;
+  border-radius: 30px; padding: 12px 16px; color: var(--c-off); font-size: var(--fs-lg);
   margin-bottom: 16px; min-height: 46px;
 }
 
@@ -768,8 +789,8 @@ html[data-theme="light"]{
   --c-charcoal:      #e4dccb;
   --c-panel:         #f4efe3;
   --c-panel-raised:  #ece3d2;
-  --c-hairline:      rgba(30,24,18,0.10);
-  --c-hairline-strong: rgba(30,24,18,0.20);
+  --c-hairline:      rgba(30,24,18,0.16);
+  --c-hairline-strong: rgba(30,24,18,0.32);
   --c-blood:         #7a1c2b;
   --c-crimson:       #8f2638;
   --c-crimson-bright:#9c2b3a;
@@ -819,22 +840,22 @@ html[data-theme="light"] body::before{ opacity: 0.035; }
 
 <nav class="bottom-nav" aria-label="Primary">
   <button class="nav-btn" data-route="dashboard" aria-current="page">
-    <span class="nav-icon" aria-hidden="true">◆</span><span>Dashboard</span>
+    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="12" width="8" height="9" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/></svg></span><span>Dashboard</span>
   </button>
   <button class="nav-btn" data-route="workout">
-    <span class="nav-icon" aria-hidden="true">⚔</span><span>Workout</span>
+    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h1M19 12h1"/><rect x="5" y="9" width="2.4" height="6" rx="0.8"/><rect x="16.6" y="9" width="2.4" height="6" rx="0.8"/><rect x="2" y="10.2" width="1.6" height="3.6" rx="0.6"/><rect x="20.4" y="10.2" width="1.6" height="3.6" rx="0.6"/><path d="M7.4 12h9.2"/></svg></span><span>Workout</span>
   </button>
   <button class="nav-btn" data-route="history">
-    <span class="nav-icon" aria-hidden="true">☰</span><span>History</span>
+    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v5l3.5 2"/><path d="M3.5 9A8.5 8.5 0 1 1 3 12.5"/><path d="M3 5v4h4"/></svg></span><span>History</span>
   </button>
   <button class="nav-btn" data-route="exercises">
-    <span class="nav-icon" aria-hidden="true">✦</span><span>Exercises</span>
+    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="0.8" fill="currentColor" stroke="none"/></svg></span><span>Exercises</span>
   </button>
   <button class="nav-btn" data-route="schedule">
-    <span class="nav-icon" aria-hidden="true">◷</span><span>Schedule</span>
+    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="1.8"/><path d="M3.5 9.5h17"/><path d="M8 3v3M16 3v3"/></svg></span><span>Schedule</span>
   </button>
   <button class="nav-btn" data-route="settings">
-    <span class="nav-icon" aria-hidden="true">⚙</span><span>Settings</span>
+    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v2.4M12 19.1v2.4M4.6 4.6l1.7 1.7M17.7 17.7l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.6 19.4l1.7-1.7M17.7 6.3l1.7-1.7"/></svg></span><span>Settings</span>
   </button>
 </nav>
 
@@ -1051,14 +1072,6 @@ function computeTrend(exerciseHistory) {
   return { trend: "stable", label: "Stable" };
 }
 
-function debounce(fn, ms) {
-  let t = null;
-  return (...args) => {
-    clearTimeout(t);
-    t = setTimeout(() => fn(...args), ms);
-  };
-}
-
 // ---- best completed set for an exercise entry: heaviest weight (using the
 // heavier side for unilateral work), tie-broken by reps at that weight ----
 function bestSetOf(entry) {
@@ -1099,15 +1112,39 @@ function detectProgression(prevEntry, currEntry) {
   return { type: "none", label: "No progression this time" };
 }
 
+// ---- exercise identity across program changes ----
+// Every exercise lookup below used to match strictly by exerciseId. That's
+// fine within a single active workout, but it quietly breaks continuity the
+// moment an exercise's id changes for a reason that has nothing to do with
+// it being a different exercise — most commonly: changing program type,
+// or deleting and re-adding a custom exercise (each gets a fresh random
+// id). "Previous weight", PR badges, and the progress graph would all
+// silently reset to empty for an exercise you've actually been running for
+// months, just because its id changed. Matching on name too (normalized:
+// trimmed, lowercased, collapsed whitespace) as well as id means the app
+// still recognizes "Bench Press" as the same lift it's always been, no
+// matter which program or which id it's currently attached to — while an
+// exercise you deliberately renamed (id unchanged) keeps matching via id
+// exactly as before.
+function normalizeExerciseName(name) {
+  return (name || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+function findExerciseEntryInWorkout(workout, exerciseId, exerciseName) {
+  const normalizedTarget = normalizeExerciseName(exerciseName);
+  return workout.exercises.find((e) =>
+    e.exerciseId === exerciseId || (normalizedTarget && normalizeExerciseName(e.name) === normalizedTarget)
+  );
+}
+
 // ---- lightweight PR detection (item 9): given completed/partial workouts
 // sorted OLDEST-FIRST, returns whether the given workout's entry for
 // exerciseId set a Weight PR and/or Rep PR at the time it was logged.
 // Independent, running-max flags — no separate PR database (item 17). ----
-function computeEntryPRFlags(workoutsAsc, exerciseId, workoutId) {
+function computeEntryPRFlags(workoutsAsc, exerciseId, workoutId, exerciseName) {
   let maxWeight = 0, maxReps = 0;
   let result = { weightPR: false, repsPR: false };
   for (const w of workoutsAsc) {
-    const entry = w.exercises.find((e) => e.exerciseId === exerciseId);
+    const entry = findExerciseEntryInWorkout(w, exerciseId, exerciseName);
     if (!entry) continue;
     const best = bestSetOf(entry);
     if (!best) continue;
@@ -1853,6 +1890,7 @@ const KV_PROGRAM_OVERRIDES = "programOverrides";
 const KV_PROGRAM_HISTORY = "programHistory";
 const KV_EXERCISE_ORDER = "exerciseOrder";
 const KV_SCHEDULE_OVERRIDES = "scheduleOverrides";
+const KV_BODYWEIGHT_LOG = "bodyweightLog";
 const ACTIVE_ID = "active";
 
 const DEFAULT_SETTINGS = {
@@ -2285,6 +2323,40 @@ async function setScheduleOverride(dateKeyStr, dayTypeOrNull) {
 }
 
 // ---------------------------------------------------------------------------
+// Bodyweight log — one entry per calendar date, always stored in kg
+// (converted for display like every other weight in the app). Logging
+// again on a date that already has an entry overwrites it rather than
+// creating a duplicate, so "log today's weigh-in" is always safe to tap
+// more than once in a day.
+// ---------------------------------------------------------------------------
+async function getBodyweightLogs() {
+  const rec = await db.get(STORES.KV, KV_BODYWEIGHT_LOG);
+  return (rec?.list || []).slice().sort((a, b) => a.date.localeCompare(b.date));
+}
+
+async function logBodyweight(dateStr, weightKg) {
+  return saving(async () => {
+    const rec = await db.get(STORES.KV, KV_BODYWEIGHT_LOG);
+    const list = (rec?.list || []).slice();
+    const idx = list.findIndex((e) => e.date === dateStr);
+    if (idx !== -1) list[idx] = { ...list[idx], weightKg };
+    else list.push({ id: uid(), date: dateStr, weightKg });
+    list.sort((a, b) => a.date.localeCompare(b.date));
+    await db.put(STORES.KV, { key: KV_BODYWEIGHT_LOG, list });
+    return list;
+  });
+}
+
+async function deleteBodyweightLog(id) {
+  return saving(async () => {
+    const rec = await db.get(STORES.KV, KV_BODYWEIGHT_LOG);
+    const list = (rec?.list || []).filter((e) => e.id !== id);
+    await db.put(STORES.KV, { key: KV_BODYWEIGHT_LOG, list });
+    return list;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Export / Import / Reset
 // ---------------------------------------------------------------------------
 
@@ -2419,6 +2491,7 @@ const storage = {
   getProgramHistory, commitProgramPatternChange, updateCurrentVersionAnchor, deleteProgramHistoryEntry, resetProgramHistory,
   getExerciseOrder, setExerciseOrder,
   getScheduleOverrides, setScheduleOverride,
+  getBodyweightLogs, logBodyweight, deleteBodyweightLog,
   exportAllData, markBackupComplete, importAllData, resetAllData,
 };
 function applyTheme(theme) {
@@ -3025,13 +3098,14 @@ function initSaveIndicator(onSaveStateChange) {
 function qs(sel, root = document) { return root.querySelector(sel); }
 function qsa(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
 async function dashboardRender(container, navigate) {
-  const [active, workouts, programState, settingsData, scheduleOverrides, programHistory] = await Promise.all([
+  const [active, workouts, programState, settingsData, scheduleOverrides, programHistory, bwLogs] = await Promise.all([
     storage.getActiveWorkout(),
     storage.getWorkouts(),
     storage.getProgramState(),
     storage.getSettings(),
     storage.getScheduleOverrides(),
     storage.getProgramHistory(),
+    storage.getBodyweightLogs(),
   ]);
 
   if (!programState.setupComplete) {
@@ -3095,26 +3169,74 @@ async function dashboardRender(container, navigate) {
     <div class="stat-grid">
       <div class="stat-box"><div class="stat-value">${loggedWorkouts.length}</div><div class="stat-label">Total workouts</div></div>
       <div class="stat-box"><div class="stat-value">${streak}</div><div class="stat-label">Day streak</div></div>
-      <div class="stat-box"><div class="stat-value">${roundTo(totalVolume, 0) ?? 0}</div><div class="stat-label">Total volume (kg)</div></div>
+      <div class="stat-box"><div class="stat-value">${roundTo(displayWeight(totalVolume, dashboardVolumeUnit), 0) ?? 0}</div><div class="stat-label">Total volume (${dashboardVolumeUnit})</div></div>
       <div class="stat-box"><div class="stat-value">${totalCardioSessions}</div><div class="stat-label">Cardio sessions</div></div>
     </div>
   `;
 
-  // Period comparison — total training volume per week/month/year, so you
-  // can compare this period against previous ones rather than just seeing
-  // a single running trend.
+  // Period comparison — total training volume per week/month/year, now with
+  // an actual readable number (not just relative bar height), a stated
+  // vs-last-period delta, an optional single-workout-type filter (blending
+  // every day type into one number was a big part of why this used to be
+  // uninformative — a Lower day and an Arms day move wildly different
+  // tonnage), and a unit toggle so it isn't silently locked to kg for
+  // people who train in lb.
   const periodLabel = { weekly: "week", monthly: "month", yearly: "year" }[dashboardPeriodRange];
+  const buckets = periodBuckets(workouts, dashboardPeriodRange, dashboardVolumeTypeFilter);
+  const hasAnyVolumeInRange = buckets.some((b) => b.value > 0);
   html += `
     <div class="section-title"><h2>Volume by Period</h2></div>
     <div class="card">
-      <div class="toggle-row" id="dash-period-range" style="max-width:320px; margin-bottom:12px;">
+      <div class="toggle-row" id="dash-period-range" style="max-width:320px; margin-bottom:10px;">
         <button type="button" data-value="weekly" class="${dashboardPeriodRange === "weekly" ? "active" : ""}">Weekly</button>
         <button type="button" data-value="monthly" class="${dashboardPeriodRange === "monthly" ? "active" : ""}">Monthly</button>
         <button type="button" data-value="yearly" class="${dashboardPeriodRange === "yearly" ? "active" : ""}">Yearly</button>
       </div>
+      <div class="flex-between" style="margin-bottom:12px; gap:10px; flex-wrap:wrap;">
+        <select id="dash-volume-type" style="background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:7px 8px; font-size:12.5px;">
+          <option value="all" ${dashboardVolumeTypeFilter === "all" ? "selected" : ""}>All Workout Types</option>
+          ${PROGRAM_DAY_TYPES.map((dt) => `<option value="${dt.key}" ${dashboardVolumeTypeFilter === dt.key ? "selected" : ""}>${escapeHtml(dt.label)} only</option>`).join("")}
+        </select>
+        <div class="toggle-row" id="dash-volume-unit" style="width:auto;">
+          <button type="button" data-value="kg" class="${dashboardVolumeUnit === "kg" ? "active" : ""}">kg</button>
+          <button type="button" data-value="lb" class="${dashboardVolumeUnit === "lb" ? "active" : ""}">lb</button>
+        </div>
+      </div>
       ${loggedWorkouts.length
-        ? `<div class="chart-wrap">${barChart(periodBuckets(workouts, dashboardPeriodRange))}</div><p class="text-faint" style="margin:10px 0 0;">Total volume (kg) per ${periodLabel}, last ${DASHBOARD_PERIOD_BUCKET_COUNT[dashboardPeriodRange]} ${periodLabel}s.</p>`
+        ? `<p style="margin:0 0 10px;">${periodDeltaSummary(buckets, dashboardVolumeUnit, periodLabel)}</p>
+           <div class="chart-wrap">${barChart(buckets, dashboardVolumeUnit)}</div>
+           <p class="text-faint" style="margin:10px 0 0;">Tap a bar for that ${periodLabel}'s exact total. Last ${DASHBOARD_PERIOD_BUCKET_COUNT[dashboardPeriodRange]} ${periodLabel}s${dashboardVolumeTypeFilter !== "all" ? `, ${PROGRAM_DAY_TYPES.find((dt) => dt.key === dashboardVolumeTypeFilter)?.label || dashboardVolumeTypeFilter} only` : ""}.</p>
+           ${!hasAnyVolumeInRange ? `<p class="text-faint" style="margin:8px 0 0; color:var(--c-crimson-bright);">No volume in this range${dashboardVolumeTypeFilter !== "all" ? " for this workout type" : ""} — try a wider period or "All Workout Types".</p>` : ""}`
         : `<p class="text-faint" style="margin:0;">Complete a workout to see this graph.</p>`}
+    </div>
+  `;
+
+  // Body weight — separate from training volume; its own tiny log + chart.
+  // Kept independent of any single exercise's unit preference since it's a
+  // whole-body number, not tied to a lift.
+  const latestBw = bwLogs[bwLogs.length - 1];
+  const firstBw = bwLogs[0];
+  const bwDelta = latestBw && firstBw && bwLogs.length > 1 ? latestBw.weightKg - firstBw.weightKg : null;
+  html += `
+    <div class="section-title"><h2>Body Weight</h2></div>
+    <div class="card">
+      <div class="flex-between" style="align-items:flex-start; margin-bottom:10px; gap:10px;">
+        <div>
+          ${latestBw
+            ? `<div class="numeric" style="font-size:22px; font-weight:600;">${roundTo(displayWeight(latestBw.weightKg, dashboardBodyweightUnit), 1)} ${dashboardBodyweightUnit}</div>
+               <div class="text-faint" style="font-size:12px;">as of ${formatDateShort(latestBw.date)}${bwDelta !== null ? ` · ${bwDelta > 0 ? "+" : ""}${roundTo(displayWeight(bwDelta, dashboardBodyweightUnit), 1)} ${dashboardBodyweightUnit} since first log` : ""}</div>`
+            : `<div class="text-faint">No weigh-ins logged yet.</div>`}
+        </div>
+        <div class="toggle-row" id="dash-bw-unit" style="width:auto; flex-shrink:0;">
+          <button type="button" data-value="kg" class="${dashboardBodyweightUnit === "kg" ? "active" : ""}">kg</button>
+          <button type="button" data-value="lb" class="${dashboardBodyweightUnit === "lb" ? "active" : ""}">lb</button>
+        </div>
+      </div>
+      ${bwLogs.length >= 2 ? `<div class="chart-wrap">${sparkline(bwLogs.map((e) => roundTo(displayWeight(e.weightKg, dashboardBodyweightUnit), 2) ?? 0))}</div>` : ""}
+      <div class="btn-row" style="margin-top:12px;">
+        <button class="btn btn-primary" id="dash-bw-log-btn" style="flex:1;">+ Log Weight</button>
+        ${bwLogs.length ? `<button class="btn" id="dash-bw-history-btn">Entries</button>` : ""}
+      </div>
     </div>
   `;
 
@@ -3155,6 +3277,34 @@ async function dashboardRender(container, navigate) {
       dashboardRender(container, navigate);
     });
   });
+  qs("#dash-volume-type", container)?.addEventListener("change", (e) => {
+    dashboardVolumeTypeFilter = e.target.value;
+    dashboardRender(container, navigate);
+  });
+  qsa("#dash-volume-unit button", container).forEach((btn) => {
+    btn.addEventListener("click", () => {
+      dashboardVolumeUnit = btn.dataset.value;
+      dashboardRender(container, navigate);
+    });
+  });
+  qsa(".bar-group", container).forEach((g) => {
+    g.addEventListener("click", () => {
+      const i = Number(g.dataset.index);
+      const buckets = periodBuckets(workouts, dashboardPeriodRange, dashboardVolumeTypeFilter);
+      const b = buckets[i];
+      if (!b) return;
+      const value = roundTo(displayWeight(b.value, dashboardVolumeUnit), 0) ?? 0;
+      toast(`${b.rangeLabel}: ${value.toLocaleString()} ${dashboardVolumeUnit}`, { duration: 4500 });
+    });
+  });
+  qsa("#dash-bw-unit button", container).forEach((btn) => {
+    btn.addEventListener("click", () => {
+      dashboardBodyweightUnit = btn.dataset.value;
+      dashboardRender(container, navigate);
+    });
+  });
+  qs("#dash-bw-log-btn", container)?.addEventListener("click", () => openLogBodyweightModal(container, navigate));
+  qs("#dash-bw-history-btn", container)?.addEventListener("click", () => openBodyweightHistoryModal(container, navigate));
 }
 
 const dashboard = { render: dashboardRender };
@@ -3162,14 +3312,20 @@ let tickInterval = null;
 let cachedSettings = null;
 let cachedPreviousByExercise = {}; // exerciseId -> last completed entry (from history, excluding current active workout)
 let dashboardPeriodRange = "weekly"; // weekly | monthly | yearly — Dashboard's period-comparison bar chart
+let dashboardVolumeTypeFilter = "all"; // "all" or a PROGRAM_DAY_TYPES key — narrows the Volume by Period chart to one workout type
+let dashboardVolumeUnit = "kg"; // "kg" | "lb" — display unit for the Volume by Period chart and the Total Volume stat
+let dashboardBodyweightUnit = "kg"; // "kg" | "lb" — display unit for the Body Weight card
 
 // Buckets a workout list into fixed windows for the given range and sums
 // each bucket's training volume, oldest to newest — e.g. weekly gives the
 // last 8 rolling 7-day windows, so you can compare week-over-week rather
-// than just see a single sliding trend line.
+// than just see a single sliding trend line. Optional typeFilter narrows
+// to one workout type (day type key) instead of blending everything
+// together — a Lower day and an Arms day move wildly different tonnage, so
+// blending them into one number was a big part of why this felt useless.
 const DASHBOARD_PERIOD_BUCKET_COUNT = { weekly: 8, monthly: 6, yearly: 5 };
 
-function periodBuckets(workouts, range) {
+function periodBuckets(workouts, range, typeFilter) {
   const now = new Date();
   const count = DASHBOARD_PERIOD_BUCKET_COUNT[range];
   const windows = [];
@@ -3193,9 +3349,10 @@ function periodBuckets(workouts, range) {
     }
   }
 
-  const completed = workouts.filter((w) => w.status !== "abandoned");
+  const completed = workouts.filter((w) => w.status !== "abandoned" && (!typeFilter || typeFilter === "all" || w.type === typeFilter));
   return windows.map((win) => ({
     label: win.label,
+    rangeLabel: `${formatDateShort(win.start.toISOString())} – ${formatDateShort(win.end.toISOString())}`,
     value: completed
       .filter((w) => {
         const t = new Date(w.startedAt).getTime();
@@ -3205,19 +3362,32 @@ function periodBuckets(workouts, range) {
   }));
 }
 
-// Minimal bar chart, styled to match sparkline() — bars for each bucket's
-// value plus a small label underneath.
-function barChart(buckets) {
-  const values = buckets.map((b) => b.value);
+// Minimal bar chart, styled to match sparkline() — now with an actual
+// value readable per bar (not just relative height), the current period
+// visually called out, and a native <title> so hovering/long-pressing a
+// bar on a device that supports it shows the exact figure and date range.
+function barChart(buckets, unit) {
+  const values = buckets.map((b) => roundTo(displayWeight(b.value, unit), 0) ?? 0);
   const max = Math.max(...values, 1);
-  const w = 300, h = 120, pad = 6, gap = 5, labelH = 14;
-  const plotH = h - pad * 2 - labelH;
+  const w = 300, h = 134, pad = 6, gap = 5, labelH = 14, valueH = 14;
+  const plotH = h - pad * 2 - labelH - valueH;
   const barW = (w - pad * 2 - gap * (values.length - 1)) / values.length;
+  const lastIdx = values.length - 1;
+  const fmtValue = (v) => (v >= 1000 ? `${roundTo(v / 1000, 1)}k` : v > 0 ? String(v) : "");
+
   const bars = values.map((v, i) => {
     const barH = max > 0 ? (v / max) * plotH : 0;
     const x = pad + i * (barW + gap);
-    const y = pad + (plotH - barH);
-    return `<rect x="${x}" y="${y}" width="${barW}" height="${Math.max(barH, 1)}" rx="2" fill="var(--c-crimson-bright)"/>`;
+    const y = pad + valueH + (plotH - barH);
+    const fill = i === lastIdx ? "var(--c-crimson-bright)" : "var(--c-hairline-strong)";
+    const valueLabel = fmtValue(v);
+    return `
+      <g class="bar-group" data-index="${i}" style="cursor:pointer;">
+        <rect x="${x}" y="${pad}" width="${barW}" height="${plotH + valueH}" fill="transparent"/>
+        ${valueLabel ? `<text x="${x + barW / 2}" y="${pad + valueH - 3}" font-size="8.5" fill="var(--c-off-faint)" text-anchor="middle">${valueLabel}</text>` : ""}
+        <rect x="${x}" y="${y}" width="${barW}" height="${Math.max(barH, 1)}" rx="2" fill="${fill}"/>
+        <title>${escapeHtml(buckets[i].rangeLabel)}: ${v.toLocaleString()} ${unit}</title>
+      </g>`;
   }).join("");
   const labels = buckets.map((b, i) => {
     const x = pad + i * (barW + gap) + barW / 2;
@@ -3225,6 +3395,28 @@ function barChart(buckets) {
   }).join("");
   return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${bars}${labels}</svg>`;
 }
+
+// The headline line above the chart: this period's total plus how it
+// compares to the one before it — the "period comparison" the section has
+// always claimed to offer, but never actually stated as a number before.
+function periodDeltaSummary(buckets, unit, periodLabel) {
+  if (buckets.length < 1) return "";
+  const current = buckets[buckets.length - 1];
+  const currentDisplay = roundTo(displayWeight(current.value, unit), 0) ?? 0;
+  if (buckets.length < 2 || !current.value) {
+    return `<span class="numeric" style="font-size:20px; font-weight:600; color:var(--c-off);">${currentDisplay.toLocaleString()} ${unit}</span> <span class="text-faint">this ${periodLabel}</span>`;
+  }
+  const prior = buckets[buckets.length - 2];
+  if (!prior.value) {
+    return `<span class="numeric" style="font-size:20px; font-weight:600; color:var(--c-off);">${currentDisplay.toLocaleString()} ${unit}</span> <span class="text-faint">this ${periodLabel} — no volume logged last ${periodLabel} to compare</span>`;
+  }
+  const pctChange = ((current.value - prior.value) / prior.value) * 100;
+  const rounded = roundTo(Math.abs(pctChange), 0) ?? 0;
+  const arrow = pctChange > 0 ? "▲" : pctChange < 0 ? "▼" : "—";
+  const color = pctChange > 0 ? "var(--c-positive, #4caf7d)" : pctChange < 0 ? "var(--c-off-faint)" : "var(--c-off-faint)";
+  return `<span class="numeric" style="font-size:20px; font-weight:600; color:var(--c-off);">${currentDisplay.toLocaleString()} ${unit}</span> <span class="text-faint">this ${periodLabel}</span> <span class="numeric" style="color:${color}; font-weight:600;">${arrow} ${rounded}%</span> <span class="text-faint">vs last ${periodLabel}</span>`;
+}
+
 
 function stopTicking() {
   if (tickInterval) { clearInterval(tickInterval); tickInterval = null; }
@@ -3302,6 +3494,7 @@ async function renderWorkoutHome(container, navigate) {
     if (ok) {
       await storage.deleteActiveWorkout();
       dismissRestTimer();
+      clearActiveWorkoutSaveRetry();
       toast("Workout discarded");
       renderWorkoutHome(container, navigate);
     }
@@ -3344,6 +3537,7 @@ async function startNewWorkout(type) {
   };
 
   dismissRestTimer();
+  clearActiveWorkoutSaveRetry();
   await storage.saveActiveWorkout(workout);
 }
 
@@ -3363,6 +3557,43 @@ function baseCardio() {
 // Active workout screen
 // ---------------------------------------------------------------------------
 
+// Fire-and-forget saves of the active workout (every set/weight/rep/note
+// edit) used to call storage.saveActiveWorkout(workout) directly with no
+// await and no .catch — so a failed save (dropped connection, a blip in
+// Supabase) vanished silently. The input still showed the new value, the
+// small header dot flipped to "Save failed" for a moment, and that was it:
+// nothing retried, and closing the tab or opening another device before it
+// happened to succeed meant that set was just gone.
+//
+// This wraps every one of those call sites instead: on failure it retries
+// automatically with backoff (most failures here are a transient network
+// blip, not a reason to lose the set), and if saves keep failing it
+// escalates to an actual toast rather than relying on someone mid-workout
+// to notice a small dot in the header. Because `workout` is the same
+// mutated-in-place object used throughout the active workout screen, a
+// retry always captures whatever the *latest* state is by the time it
+// fires — never a stale snapshot from the moment it first failed.
+let activeWorkoutSaveRetryTimer = null;
+let activeWorkoutSaveFailCount = 0;
+function clearActiveWorkoutSaveRetry() {
+  if (activeWorkoutSaveRetryTimer) { clearTimeout(activeWorkoutSaveRetryTimer); activeWorkoutSaveRetryTimer = null; }
+  activeWorkoutSaveFailCount = 0;
+}
+function queueActiveWorkoutSave(workout) {
+  if (activeWorkoutSaveRetryTimer) { clearTimeout(activeWorkoutSaveRetryTimer); activeWorkoutSaveRetryTimer = null; }
+  storage.saveActiveWorkout(workout).then(() => {
+    activeWorkoutSaveFailCount = 0;
+  }).catch((err) => {
+    console.error("[app] active workout save failed, will retry", err);
+    activeWorkoutSaveFailCount++;
+    if (activeWorkoutSaveFailCount === 3) {
+      toast("Your last few changes haven't saved — check your connection. Retrying…", { duration: 6000 });
+    }
+    const delay = Math.min(15000, 1500 * activeWorkoutSaveFailCount);
+    activeWorkoutSaveRetryTimer = setTimeout(() => queueActiveWorkoutSave(workout), delay);
+  });
+}
+
 async function renderActiveWorkout(container, navigate) {
   teardown();
   const active = await storage.getActiveWorkout();
@@ -3376,16 +3607,16 @@ async function renderActiveWorkout(container, navigate) {
   const history = await storage.getWorkouts();
   cachedPreviousByExercise = {};
   for (const entry of active.exercises) {
-    cachedPreviousByExercise[entry.exerciseId] = findPreviousEntry(history, entry.exerciseId);
+    cachedPreviousByExercise[entry.exerciseId] = findPreviousEntry(history, entry.exerciseId, entry.name);
   }
 
   paintActiveWorkout(container, active, navigate);
 }
 
-function findPreviousEntry(history, exerciseId) {
+function findPreviousEntry(history, exerciseId, exerciseName) {
   for (const w of history) {
     if (w.status !== "completed" && w.status !== "partial") continue;
-    const entry = w.exercises.find((e) => e.exerciseId === exerciseId);
+    const entry = findExerciseEntryInWorkout(w, exerciseId, exerciseName);
     if (entry && entry.sets.some((s) => s.completed)) return entry;
   }
   return null;
@@ -3461,26 +3692,21 @@ function renderExerciseCard(entry, workout) {
     <div class="card exercise-card" data-exercise="${entry.exerciseId}">
       <div class="ex-head">
         <div>
-          <div class="ex-name">${escapeHtml(entry.name)}${entry.substitutedFrom ? `<span class="text-faint" style="font-size:11.5px; font-weight:400;"> (sub for ${escapeHtml(entry.substitutedFrom.name)})</span>` : ""}</div>
+          <div class="ex-name">${escapeHtml(entry.name)}${entry.substitutedFrom ? `<span class="text-faint" style="font-size:var(--fs-xs); font-weight:400;"> (sub for ${escapeHtml(entry.substitutedFrom.name)})</span>` : ""}</div>
           <div class="ex-sub">
             <span>${entry.sets.length} programmed set${entry.sets.length > 1 ? "s" : ""}</span>
+            ${def?.targetReps ? `<span>· target ${escapeHtml(def.targetReps)} reps</span>` : ""}
+            <span>· ${exerciseUnit}</span>
             ${entry.unilateral ? `<span class="badge badge-uni">Unilateral</span>` : ""}
           </div>
         </div>
-        <div class="toggle-row unit-toggle" data-exercise="${entry.exerciseId}" style="width:auto; flex-shrink:0;">
-          <button type="button" data-value="kg" class="${exerciseUnit === "kg" ? "active" : ""}">kg</button>
-          <button type="button" data-value="lb" class="${exerciseUnit === "lb" ? "active" : ""}">lb</button>
-        </div>
-      </div>
-      <div class="quick-row" style="margin-top:8px;">
-        <button type="button" class="chip-btn" data-act="cycle-rest" data-exercise="${entry.exerciseId}" title="Tap to change this exercise's rest time">⏱ Rest ${restTimerTimeLabel(getExerciseRestSeconds(cachedSettings, entry.exerciseId))}</button>
+        <button type="button" class="icon-btn" data-act="open-ex-options" data-exercise="${entry.exerciseId}" aria-label="Exercise options (unit, rest timer, plates, substitute)" style="flex-shrink:0;">⋯</button>
       </div>
       ${prevLines ? `<div class="ex-prev">LAST TIME<br>${prevLines.map(escapeHtml).join("<br>")}</div>` : `<div class="ex-prev text-faint">No previous data yet</div>`}
       <div class="sets-list">${setsHtml}</div>
       <div class="quick-row">
         ${prev ? `<button class="chip-btn" data-act="use-prev-weight" data-exercise="${entry.exerciseId}">Use Previous Weight</button>` : ""}
         ${prev ? `<button class="chip-btn" data-act="copy-prev-set" data-exercise="${entry.exerciseId}">Copy Previous Set</button>` : ""}
-        <button class="chip-btn" data-act="substitute-ex" data-exercise="${entry.exerciseId}">⇄ Substitute</button>
       </div>
       <div class="tempo-row" style="margin-top:10px;">
         <span class="rir-label" style="display:block; margin-bottom:6px;">Execution</span>
@@ -3613,38 +3839,15 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
       } else {
         s[field] = raw;
       }
-      storage.saveActiveWorkout(workout);
+      queueActiveWorkoutSave(workout);
     });
   });
 
-  // Per-exercise unit preference toggle
-  qsa('.unit-toggle', container).forEach((row) => {
-    qsa("button", row).forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const exerciseId = row.dataset.exercise;
-        const value = btn.dataset.value;
-        const current = cachedSettings.exerciseUnits || {};
-        cachedSettings.exerciseUnits = { ...current, [exerciseId]: value };
-        await storage.saveSettings({ exerciseUnits: cachedSettings.exerciseUnits });
-        const entry = workout.exercises.find((e) => e.exerciseId === exerciseId);
-        const card = qs(`.exercise-card[data-exercise="${exerciseId}"]`, container);
-        if (card) card.outerHTML = renderExerciseCard(entry, workout);
-        rewireExerciseCard(container, workout, exerciseId);
-      });
-    });
-  });
-
-  // Per-exercise rest timer duration — tap to cycle through presets
-  qsa('[data-act="cycle-rest"]', container).forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const exerciseId = btn.dataset.exercise;
-      const current = getExerciseRestSeconds(cachedSettings, exerciseId);
-      const next = nextRestPreset(current);
-      const map = cachedSettings.exerciseRestSeconds || {};
-      cachedSettings.exerciseRestSeconds = { ...map, [exerciseId]: next };
-      await storage.saveSettings({ exerciseRestSeconds: cachedSettings.exerciseRestSeconds });
-      btn.textContent = `⏱ Rest ${restTimerTimeLabel(next)}`;
-    });
+  // Exercise options — unit, rest duration, plate calculator, substitute —
+  // all consolidated behind the card's "⋯" button (see
+  // openExerciseOptionsModal for why).
+  qsa('[data-act="open-ex-options"]', container).forEach((btn) => {
+    btn.addEventListener("click", () => openExerciseOptionsModal(container, workout, btn.dataset.exercise));
   });
 
   // RIR chips and failure toggle
@@ -3656,7 +3859,7 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
       if (side === "left") s.leftRir = s.leftRir === rir ? null : rir;
       else if (side === "right") s.rightRir = s.rightRir === rir ? null : rir;
       else s.rir = s.rir === rir ? null : rir;
-      storage.saveActiveWorkout(workout);
+      queueActiveWorkoutSave(workout);
       updateRirRowUI(container, exercise, Number(set), s);
     });
   });
@@ -3680,7 +3883,7 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
         }
       }
       updateSetRowUI(container, entry.exerciseId, Number(set), s);
-      storage.saveActiveWorkout(workout);
+      queueActiveWorkoutSave(workout);
       updateProgressUI(container, workout);
     });
     // long-press-free alt: allow marking skipped via a second control (double click / right side) —
@@ -3698,7 +3901,7 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
       if (s.skipped) { s.skipped = false; }
       else { s.skipped = true; s.completed = false; }
       updateSetRowUI(container, exercise, set, s);
-      storage.saveActiveWorkout(workout);
+      queueActiveWorkoutSave(workout);
       updateProgressUI(container, workout);
     });
   });
@@ -3717,7 +3920,7 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
       const { exercise, tempo } = btn.dataset;
       const entry = workout.exercises.find((e) => e.exerciseId === exercise);
       entry.tempo = entry.tempo === tempo ? null : tempo;
-      storage.saveActiveWorkout(workout);
+      queueActiveWorkoutSave(workout);
       const card = qs(`.exercise-card[data-exercise="${exercise}"]`, container);
       if (card) {
         qsa(".tempo-chip", card).forEach((b) => b.classList.toggle("active", b.dataset.tempo === entry.tempo));
@@ -3730,13 +3933,8 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
     ta.addEventListener("change", () => {
       const entry = workout.exercises.find((e) => e.exerciseId === ta.dataset.exercise);
       entry.notes = ta.value;
-      storage.saveActiveWorkout(workout);
+      queueActiveWorkoutSave(workout);
     });
-  });
-
-  // Exercise substitution (item 16) — workout-only unless "apply permanently" is checked
-  qsa('[data-act="substitute-ex"]', container).forEach((btn) => {
-    btn.addEventListener("click", () => openSubstituteModal(container, workout, btn.dataset.exercise, navigate));
   });
 
   // Cardio controls
@@ -3744,7 +3942,7 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
   qsa('[data-act="cardio-skip"]', container).forEach((btn) => btn.addEventListener("click", () => cardioAction(container, workout, btn.dataset.phase, "skip")));
 
   const notes = qs("#workout-notes", container);
-  if (notes) notes.addEventListener("change", () => { workout.notes = notes.value; storage.saveActiveWorkout(workout); });
+  if (notes) notes.addEventListener("change", () => { workout.notes = notes.value; queueActiveWorkoutSave(workout); });
 
   qs('[data-act="finish"]', container)?.addEventListener("click", () => finishWorkout(container, workout, navigate));
   qs('[data-act="finish-bottom"]', container)?.addEventListener("click", () => finishWorkout(container, workout, navigate));
@@ -3807,7 +4005,7 @@ function applyPrevious(container, workout, exerciseId, mode) {
     s.weightUnit = currentUnit;
   });
 
-  storage.saveActiveWorkout(workout);
+  queueActiveWorkoutSave(workout);
   // Re-render just this exercise card to reflect the new values in the inputs.
   const card = qs(`.exercise-card[data-exercise="${exerciseId}"]`, container);
   if (card) card.outerHTML = renderExerciseCard(entry, workout);
@@ -3831,32 +4029,11 @@ function rewireExerciseCard(container, workout, exerciseId) {
       } else {
         s[field] = raw;
       }
-      storage.saveActiveWorkout(workout);
+      queueActiveWorkoutSave(workout);
     });
   });
-  qsa('.unit-toggle', card).forEach((row) => {
-    qsa("button", row).forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const value = btn.dataset.value;
-        const current = cachedSettings.exerciseUnits || {};
-        cachedSettings.exerciseUnits = { ...current, [exerciseId]: value };
-        await storage.saveSettings({ exerciseUnits: cachedSettings.exerciseUnits });
-        const entry = workout.exercises.find((e) => e.exerciseId === exerciseId);
-        const freshCard = qs(`.exercise-card[data-exercise="${exerciseId}"]`, container);
-        if (freshCard) freshCard.outerHTML = renderExerciseCard(entry, workout);
-        rewireExerciseCard(container, workout, exerciseId);
-      });
-    });
-  });
-  qsa('[data-act="cycle-rest"]', card).forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const current = getExerciseRestSeconds(cachedSettings, exerciseId);
-      const next = nextRestPreset(current);
-      const map = cachedSettings.exerciseRestSeconds || {};
-      cachedSettings.exerciseRestSeconds = { ...map, [exerciseId]: next };
-      await storage.saveSettings({ exerciseRestSeconds: cachedSettings.exerciseRestSeconds });
-      btn.textContent = `⏱ Rest ${restTimerTimeLabel(next)}`;
-    });
+  qsa('[data-act="open-ex-options"]', card).forEach((btn) => {
+    btn.addEventListener("click", () => openExerciseOptionsModal(container, workout, exerciseId));
   });
   qsa('[data-act="set-rir"]', card).forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -3866,7 +4043,7 @@ function rewireExerciseCard(container, workout, exerciseId) {
       if (side === "left") s.leftRir = s.leftRir === rir ? null : rir;
       else if (side === "right") s.rightRir = s.rightRir === rir ? null : rir;
       else s.rir = s.rir === rir ? null : rir;
-      storage.saveActiveWorkout(workout);
+      queueActiveWorkoutSave(workout);
       updateRirRowUI(container, exercise, Number(set), s);
     });
   });
@@ -3884,7 +4061,7 @@ function rewireExerciseCard(container, workout, exerciseId) {
         }
       }
       updateSetRowUI(container, entry.exerciseId, Number(set), s);
-      storage.saveActiveWorkout(workout);
+      queueActiveWorkoutSave(workout);
       updateProgressUI(container, workout);
     });
   });
@@ -3896,7 +4073,7 @@ function rewireExerciseCard(container, workout, exerciseId) {
       const s = entry.sets[set];
       if (s.skipped) s.skipped = false; else { s.skipped = true; s.completed = false; }
       updateSetRowUI(container, exercise, set, s);
-      storage.saveActiveWorkout(workout);
+      queueActiveWorkoutSave(workout);
       updateProgressUI(container, workout);
     });
   });
@@ -3906,7 +4083,7 @@ function rewireExerciseCard(container, workout, exerciseId) {
     btn.addEventListener("click", () => {
       const entry = workout.exercises.find((e) => e.exerciseId === exerciseId);
       entry.tempo = entry.tempo === btn.dataset.tempo ? null : btn.dataset.tempo;
-      storage.saveActiveWorkout(workout);
+      queueActiveWorkoutSave(workout);
       qsa(".tempo-chip", card).forEach((b) => b.classList.toggle("active", b.dataset.tempo === entry.tempo));
     });
   });
@@ -3914,11 +4091,248 @@ function rewireExerciseCard(container, workout, exerciseId) {
     ta.addEventListener("change", () => {
       const entry = workout.exercises.find((e) => e.exerciseId === exerciseId);
       entry.notes = ta.value;
-      storage.saveActiveWorkout(workout);
+      queueActiveWorkoutSave(workout);
     });
   });
-  qsa('[data-act="substitute-ex"]', card).forEach((btn) => {
-    btn.addEventListener("click", () => openSubstituteModal(container, workout, exerciseId, null));
+}
+
+// ---------------------------------------------------------------------------
+// Plate calculator — given a target barbell weight, works out which plates
+// go on EACH side (heaviest first) using a standard greedy fill against a
+// real plate set. Greedy is fine here (not the pathological coin-change
+// case) because standard plate denominations are each roughly half the
+// previous one. If the target isn't exactly reachable with those plates
+// (e.g. an odd number), it reports the closest achievable total rather
+// than pretending it hit the exact figure.
+// ---------------------------------------------------------------------------
+const PLATE_SIZES_KG = [25, 20, 15, 10, 5, 2.5, 1.25];
+const PLATE_SIZES_LB = [45, 35, 25, 10, 5, 2.5];
+
+function computePlateBreakdown(targetWeight, barWeight, unit) {
+  const plates = unit === "lb" ? PLATE_SIZES_LB : PLATE_SIZES_KG;
+  let perSide = Math.max(0, (targetWeight - barWeight) / 2);
+  const used = [];
+  for (const p of plates) {
+    while (perSide + 1e-6 >= p) {
+      used.push(p);
+      perSide -= p;
+    }
+  }
+  const achievedPerSide = used.reduce((s, p) => s + p, 0);
+  const achievedTotal = roundTo(barWeight + achievedPerSide * 2, 2);
+  return { plates: used, achievedTotal, remainder: Math.max(0, perSide) };
+}
+
+// ---------------------------------------------------------------------------
+// Exercise options — the unit toggle, rest-timer duration, plate calculator,
+// and substitute action used to each sit directly on the exercise card as
+// their own row/chip, which piled up to two extra rows above the sets grid
+// (the one thing you actually touch every single set) on top of the
+// header. They're occasional adjustments, not per-set actions, so they now
+// live behind one "⋯" button instead.
+// ---------------------------------------------------------------------------
+function openExerciseOptionsModal(container, workout, exerciseId) {
+  const entry = workout.exercises.find((e) => e.exerciseId === exerciseId);
+  if (!entry) return;
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+
+  function close() { overlay.remove(); }
+  function refreshCardBehindModal() {
+    const freshCard = qs(`.exercise-card[data-exercise="${exerciseId}"]`, container);
+    if (freshCard) freshCard.outerHTML = renderExerciseCard(entry, workout);
+    rewireExerciseCard(container, workout, exerciseId);
+  }
+
+  const renderBody = () => {
+    const unit = getExerciseUnit(cachedSettings, exerciseId);
+    const restSeconds = getExerciseRestSeconds(cachedSettings, exerciseId);
+    overlay.innerHTML = `
+      <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="ex-options-title">
+        <h3 id="ex-options-title">${escapeHtml(entry.name)}</h3>
+        <div class="field">
+          <label>Weight unit</label>
+          <div class="toggle-row" id="exopt-unit">
+            <button type="button" data-value="kg" class="${unit === "kg" ? "active" : ""}">kg</button>
+            <button type="button" data-value="lb" class="${unit === "lb" ? "active" : ""}">lb</button>
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>Rest timer for this exercise</label>
+          <button type="button" class="chip-btn" id="exopt-rest">⏱ ${restTimerTimeLabel(restSeconds)} — tap to change</button>
+        </div>
+        <div class="btn-row" style="margin-top:18px; flex-direction:column; gap:8px;">
+          <button class="btn" id="exopt-plates" type="button" style="width:100%;">🏋 Plate Calculator</button>
+          <button class="btn" id="exopt-substitute" type="button" style="width:100%;">⇄ Substitute Exercise</button>
+        </div>
+        <div class="btn-row" style="margin-top:14px;">
+          <button class="btn btn-primary" data-act="close" type="button" style="width:100%;">Done</button>
+        </div>
+      </div>`;
+
+    overlay.querySelector('[data-act="close"]').addEventListener("click", close);
+    qsa("#exopt-unit button", overlay).forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const value = btn.dataset.value;
+        const current = cachedSettings.exerciseUnits || {};
+        cachedSettings.exerciseUnits = { ...current, [exerciseId]: value };
+        await storage.saveSettings({ exerciseUnits: cachedSettings.exerciseUnits });
+        refreshCardBehindModal();
+        renderBody();
+      });
+    });
+    qs("#exopt-rest", overlay).addEventListener("click", async () => {
+      const current = getExerciseRestSeconds(cachedSettings, exerciseId);
+      const next = nextRestPreset(current);
+      const map = cachedSettings.exerciseRestSeconds || {};
+      cachedSettings.exerciseRestSeconds = { ...map, [exerciseId]: next };
+      await storage.saveSettings({ exerciseRestSeconds: cachedSettings.exerciseRestSeconds });
+      renderBody();
+    });
+    qs("#exopt-plates", overlay).addEventListener("click", () => {
+      close();
+      const currentUnit = getExerciseUnit(cachedSettings, exerciseId);
+      const currentBest = bestSetOf(entry);
+      const prevEntry = cachedPreviousByExercise[exerciseId];
+      const prevBest = prevEntry ? bestSetOf(prevEntry) : null;
+      const weightKg = currentBest?.weight || prevBest?.weight || null;
+      openPlateCalculatorModal(currentUnit, weightKg ? roundTo(displayWeight(weightKg, currentUnit), 1) : null);
+    });
+    qs("#exopt-substitute", overlay).addEventListener("click", () => {
+      close();
+      openSubstituteModal(container, workout, exerciseId, null);
+    });
+  };
+
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  modalRoot.appendChild(overlay);
+  renderBody();
+}
+
+function openPlateCalculatorModal(unit, defaultWeight) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  const defaultBar = unit === "lb" ? 45 : 20;
+  overlay.innerHTML = `
+    <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="plate-modal-title">
+      <h3 id="plate-modal-title">Plate Calculator</h3>
+      <div class="field">
+        <label for="plate-target">Target weight (${unit})</label>
+        <input type="number" id="plate-target" inputmode="decimal" value="${defaultWeight ?? ""}" placeholder="e.g. 100">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label for="plate-bar">Bar weight (${unit})</label>
+        <input type="number" id="plate-bar" inputmode="decimal" value="${defaultBar}">
+      </div>
+      <div id="plate-result" style="margin-top:16px;"></div>
+      <div class="btn-row" style="margin-top:16px;">
+        <button class="btn btn-primary" data-act="close" type="button">Done</button>
+      </div>
+    </div>`;
+  modalRoot.appendChild(overlay);
+
+  function close() { overlay.remove(); }
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('[data-act="close"]').addEventListener("click", close);
+
+  const renderResult = () => {
+    const target = Number(qs("#plate-target", overlay).value) || 0;
+    const bar = Number(qs("#plate-bar", overlay).value) || 0;
+    const resultEl = qs("#plate-result", overlay);
+    if (target <= 0) { resultEl.innerHTML = ""; return; }
+    if (target < bar) {
+      resultEl.innerHTML = `<p class="text-faint" style="color:var(--c-crimson-bright); margin:0;">Target is lighter than the bar itself.</p>`;
+      return;
+    }
+    const { plates, achievedTotal, remainder } = computePlateBreakdown(target, bar, unit);
+    resultEl.innerHTML = `
+      <p class="text-dim" style="margin:0 0 8px; font-size:13px;">Per side (heaviest first):</p>
+      ${plates.length
+        ? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;">${plates.map((p) => `<span class="badge" style="background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); padding:4px 9px;">${p}</span>`).join("")}</div>`
+        : `<p class="text-faint" style="margin:0 0 10px;">Just the bar — no plates needed.</p>`}
+      <p class="numeric" style="margin:0; font-size:15px; font-weight:600;">${achievedTotal} ${unit} total</p>
+      ${remainder > 0.01 ? `<p class="text-faint" style="margin:4px 0 0;">Closest achievable with standard plates — off by ${roundTo(target - achievedTotal, 2)} ${unit}.</p>` : ""}
+    `;
+  };
+  qs("#plate-target", overlay).addEventListener("input", renderResult);
+  qs("#plate-bar", overlay).addEventListener("input", renderResult);
+  renderResult();
+}
+
+// ---------------------------------------------------------------------------
+// Bodyweight log modals — a quick "log today's weigh-in" entry point plus a
+// simple list to review or delete past entries. Lives on the Dashboard.
+// ---------------------------------------------------------------------------
+function openLogBodyweightModal(container, navigate) {
+  const unit = dashboardBodyweightUnit;
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="bw-modal-title">
+      <h3 id="bw-modal-title">Log Body Weight</h3>
+      <div class="field">
+        <label for="bw-date">Date</label>
+        <input type="date" id="bw-date" value="${todayDateStr()}" max="${todayDateStr()}">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label for="bw-weight">Weight (${unit})</label>
+        <input type="number" id="bw-weight" inputmode="decimal" placeholder="e.g. 78.5">
+      </div>
+      <div class="btn-row" style="margin-top:18px;">
+        <button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button>
+        <button class="btn btn-primary" data-act="confirm" type="button">Save</button>
+      </div>
+    </div>`;
+  modalRoot.appendChild(overlay);
+
+  function close() { overlay.remove(); }
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('[data-act="cancel"]').addEventListener("click", close);
+  overlay.querySelector('[data-act="confirm"]').addEventListener("click", async () => {
+    const dateVal = qs("#bw-date", overlay).value;
+    const weightVal = Number(qs("#bw-weight", overlay).value);
+    if (!dateVal || !weightVal || weightVal <= 0) {
+      toast("Enter a date and weight");
+      return;
+    }
+    await storage.logBodyweight(dateVal, toStorageWeight(weightVal, unit));
+    close();
+    toast("Weight logged");
+    dashboardRender(container, navigate);
+  });
+}
+
+async function openBodyweightHistoryModal(container, navigate) {
+  const unit = dashboardBodyweightUnit;
+  const logs = (await storage.getBodyweightLogs()).slice().reverse(); // newest first for review
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="bw-history-title">
+      <h3 id="bw-history-title">Body Weight Entries</h3>
+      <div style="max-height:50vh; overflow-y:auto; margin:10px 0;">
+        ${logs.length ? logs.map((e) => `
+          <div class="flex-between" style="padding:8px 0; border-top:1px solid var(--c-hairline);">
+            <span>${formatDateShort(e.date)} — <span class="numeric">${roundTo(displayWeight(e.weightKg, unit), 1)} ${unit}</span></span>
+            <button class="link-btn" data-act="delete-bw" data-id="${e.id}" style="color:var(--c-crimson-bright);">Delete</button>
+          </div>`).join("") : `<p class="text-faint" style="margin:0;">No entries yet.</p>`}
+      </div>
+      <div class="btn-row" style="margin-top:8px;">
+        <button class="btn btn-primary" data-act="close" type="button">Close</button>
+      </div>
+    </div>`;
+  modalRoot.appendChild(overlay);
+
+  function close() { overlay.remove(); }
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('[data-act="close"]').addEventListener("click", close);
+  overlay.querySelectorAll('[data-act="delete-bw"]').forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      await storage.deleteBodyweightLog(btn.dataset.id);
+      close();
+      toast("Entry deleted");
+      dashboardRender(container, navigate);
+    });
   });
 }
 
@@ -4028,7 +4442,7 @@ function openSubstituteModal(container, workout, exerciseId, navigate) {
     close();
     toast(`Substituted ${newDef.name}`);
     const history = await storage.getWorkouts();
-    cachedPreviousByExercise[newDef.id] = findPreviousEntry(history, newDef.id);
+    cachedPreviousByExercise[newDef.id] = findPreviousEntry(history, newDef.id, newDef.name);
     const card = qs(`.exercise-card[data-exercise="${oldId}"]`, container);
     if (card) card.outerHTML = renderExerciseCard(entry, workout);
     rewireExerciseCard(container, workout, newDef.id);
@@ -4042,7 +4456,7 @@ function cardioAction(container, workout, phase, action) {
   } else if (action === "skip") {
     c.status = c.status === "skipped" ? "idle" : "skipped";
   }
-  storage.saveActiveWorkout(workout);
+  queueActiveWorkoutSave(workout);
   const card = qs(`[data-cardio="${phase}"]`, container);
   if (card) {
     const title = phase === "pre" ? "Pre-Workout Cardio" : "Post-Workout Cardio";
@@ -4074,6 +4488,7 @@ async function finishWorkout(container, workout, navigate) {
   await storage.saveWorkout(workout);
   await storage.deleteActiveWorkout();
   dismissRestTimer();
+  clearActiveWorkoutSaveRetry();
   hapticTap([12, 40, 18]);
 
   navigate("workout-summary", { workoutId: workout.id });
@@ -4105,12 +4520,12 @@ async function renderWorkoutSummary(container, navigate, params) {
   const progressions = [];
   const prs = [];
   for (const entry of workout.exercises) {
-    const prev = [...priorAsc].reverse().map((w) => w.exercises.find((e) => e.exerciseId === entry.exerciseId)).find(Boolean) || null;
+    const prev = [...priorAsc].reverse().map((w) => findExerciseEntryInWorkout(w, entry.exerciseId, entry.name)).find(Boolean) || null;
     const prog = detectProgression(prev, entry);
     if (prog && (prog.type === "weight" || prog.type === "reps")) {
       progressions.push(`${entry.name}: ${prog.label}`);
     }
-    const flags = computeEntryPRFlags(workoutsAsc, entry.exerciseId, workout.id);
+    const flags = computeEntryPRFlags(workoutsAsc, entry.exerciseId, workout.id, entry.name);
     if (flags.weightPR) prs.push(`${entry.name} — Weight PR`);
     if (flags.repsPR) prs.push(`${entry.name} — Rep PR`);
   }
@@ -4319,7 +4734,7 @@ async function historyRenderDetail(container, navigate, params, { editMode = fal
   const workoutsAsc = completedWorkoutsAsc(await storage.getWorkouts());
 
   for (const entry of workout.exercises) {
-    const prFlags = computeEntryPRFlags(workoutsAsc, entry.exerciseId, workout.id);
+    const prFlags = computeEntryPRFlags(workoutsAsc, entry.exerciseId, workout.id, entry.name);
     html += `<div class="card exercise-card">
       <div class="ex-head">
         <div>
@@ -4604,11 +5019,17 @@ async function exercisesRenderList(container, navigate, query = "") {
     ? defs.filter((d) => d.name.toLowerCase().includes(query.toLowerCase()))
     : defs;
 
-  const lastPerformed = {};
+  // Keyed by normalized exercise name rather than exerciseId — same
+  // reasoning as findExerciseEntryInWorkout above: an exercise that's been
+  // deleted and re-added (or carried into a new program) gets a fresh id,
+  // and without this "last performed" would wrongly reset to blank even
+  // though you did it last week under its previous id.
+  const lastPerformedByName = {};
   for (const w of workouts) {
     for (const e of w.exercises) {
-      if (!lastPerformed[e.exerciseId] && e.sets.some((s) => s.completed)) {
-        lastPerformed[e.exerciseId] = w.startedAt;
+      const key = normalizeExerciseName(e.name);
+      if (key && !lastPerformedByName[key] && e.sets.some((s) => s.completed)) {
+        lastPerformedByName[key] = w.startedAt;
       }
     }
   }
@@ -4622,7 +5043,7 @@ async function exercisesRenderList(container, navigate, query = "") {
           <div class="history-item" data-id="${d.id}" style="cursor:pointer;">
             <div class="h-body">
               <div class="h-title">${escapeHtml(d.name)} ${d.unilateral ? `<span class="badge badge-uni">Unilateral</span>` : ""}</div>
-              <div class="h-meta">${escapeHtml(muscleSummaryText(d))} · ${d.sets} programmed set${d.sets > 1 ? "s" : ""}${lastPerformed[d.id] ? ` · last ${formatDateShort(lastPerformed[d.id])}` : ""}</div>
+              <div class="h-meta">${escapeHtml(muscleSummaryText(d))} · ${d.sets} programmed set${d.sets > 1 ? "s" : ""}${lastPerformedByName[normalizeExerciseName(d.name)] ? ` · last ${formatDateShort(lastPerformedByName[normalizeExerciseName(d.name)])}` : ""}</div>
             </div>
             <div class="h-chevron">›</div>
           </div>`).join("")}
@@ -4638,6 +5059,7 @@ async function exercisesRenderList(container, navigate, query = "") {
 }
 
 let exerciseGraphRange = "monthly"; // weekly | monthly | yearly — item 10, no "All Time" option
+let exerciseGraphMetric = "volume"; // "volume" | "1rm" — which line the Progression Graph plots
 const GRAPH_RANGE_DAYS = { weekly: 7, monthly: 30, yearly: 365 };
 
 async function exercisesRenderDetail(container, navigate, params) {
@@ -4651,13 +5073,18 @@ async function exercisesRenderDetail(container, navigate, params) {
   const preferredUnit = getExerciseUnit(settings, def.id);
 
   // Build history of completed entries for this exercise, oldest -> newest.
+  // Matches by name as well as id (see findExerciseEntryInWorkout) so this
+  // graph doesn't silently truncate to "since the last program change" —
+  // sets logged under this exercise's previous id, before it got a new one,
+  // still show up here as the same continuous history.
   const history = [];
   for (const w of workouts.slice().reverse()) {
-    const entry = w.exercises.find((e) => e.exerciseId === def.id);
+    const entry = findExerciseEntryInWorkout(w, def.id, def.name);
     if (!entry) continue;
     const hasCompleted = entry.sets.some((s) => s.completed);
     if (!hasCompleted) continue;
-    history.push({ date: w.startedAt, workoutId: w.id, volume: exerciseVolume(entry), entry });
+    const best = bestSetOf(entry);
+    history.push({ date: w.startedAt, workoutId: w.id, volume: exerciseVolume(entry), oneRM: best ? estimate1RM(best.weight, best.reps) : 0, entry });
   }
 
   const trend = computeTrend(history);
@@ -4689,17 +5116,24 @@ async function exercisesRenderDetail(container, navigate, params) {
     <div class="card">
       <span class="trend-tag" style="color:${trend.trend === "improving" ? "var(--c-positive)" : trend.trend === "declining" ? "var(--c-crimson-bright)" : "var(--c-off-dim)"}">${trend.label}</span>
       ${latestProgression ? `<p class="text-dim" style="margin:10px 0 0; font-size:13.5px;">Last session: ${escapeHtml(latestProgression.label)}</p>` : ""}
+      ${history.length ? `<p class="text-dim" style="margin:6px 0 0; font-size:13.5px;">Estimated 1RM: <span class="numeric" style="font-weight:600;">${roundTo(displayWeight(history[history.length - 1].oneRM, preferredUnit), 1) ?? 0} ${preferredUnit}</span> <span class="text-faint">(from your last session's top set, Epley formula — an estimate, not a tested max)</span></p>` : ""}
     </div>
 
     <div class="section-title"><h2>Progression Graph</h2></div>
     <div class="card">
-      <div class="toggle-row" id="ex-graph-range" style="max-width:320px; margin-bottom:12px;">
-        <button type="button" data-value="weekly" class="${exerciseGraphRange === "weekly" ? "active" : ""}">Weekly</button>
-        <button type="button" data-value="monthly" class="${exerciseGraphRange === "monthly" ? "active" : ""}">Monthly</button>
-        <button type="button" data-value="yearly" class="${exerciseGraphRange === "yearly" ? "active" : ""}">Yearly</button>
+      <div class="flex-between" style="margin-bottom:12px; gap:10px; flex-wrap:wrap;">
+        <div class="toggle-row" id="ex-graph-range" style="max-width:320px;">
+          <button type="button" data-value="weekly" class="${exerciseGraphRange === "weekly" ? "active" : ""}">Weekly</button>
+          <button type="button" data-value="monthly" class="${exerciseGraphRange === "monthly" ? "active" : ""}">Monthly</button>
+          <button type="button" data-value="yearly" class="${exerciseGraphRange === "yearly" ? "active" : ""}">Yearly</button>
+        </div>
+        <div class="toggle-row" id="ex-graph-metric" style="width:auto;">
+          <button type="button" data-value="volume" class="${exerciseGraphMetric === "volume" ? "active" : ""}">Volume</button>
+          <button type="button" data-value="1rm" class="${exerciseGraphMetric === "1rm" ? "active" : ""}">Est. 1RM</button>
+        </div>
       </div>
       ${windowedHistory.length >= 2
-        ? `<div class="chart-wrap">${sparkline(windowedHistory)}</div><p class="text-faint" style="margin:10px 0 0;">Volume (kg) over the last ${rangeDays} days.</p>`
+        ? `<div class="chart-wrap">${sparkline(windowedHistory.map((h) => roundTo(displayWeight(exerciseGraphMetric === "1rm" ? h.oneRM : h.volume, preferredUnit), 1) ?? 0))}</div><p class="text-faint" style="margin:10px 0 0;">${exerciseGraphMetric === "1rm" ? `Estimated 1-rep max (${preferredUnit}, Epley formula from your top set each session)` : `Volume (${preferredUnit})`} over the last ${rangeDays} days.</p>`
         : `<p class="text-faint" style="margin:0;">Not enough data in this range yet.</p>`}
     </div>
 
@@ -4736,10 +5170,16 @@ async function exercisesRenderDetail(container, navigate, params) {
       exercisesRenderDetail(container, navigate, params);
     });
   });
+  qsa("#ex-graph-metric button", container).forEach((btn) => {
+    btn.addEventListener("click", () => {
+      exerciseGraphMetric = btn.dataset.value;
+      exercisesRenderDetail(container, navigate, params);
+    });
+  });
 }
 
 function renderHistoryRow(h, def, workoutsAsc) {
-  const flags = computeEntryPRFlags(workoutsAsc, def.id, h.workoutId);
+  const flags = computeEntryPRFlags(workoutsAsc, def.id, h.workoutId, def.name);
   const lines = h.entry.sets.filter((s) => s.completed).map((s) => {
     const unit = s.weightUnit || "kg";
     if (def.unilateral) {
@@ -4764,7 +5204,7 @@ function renderHistoryRow(h, def, workoutsAsc) {
 // same history array already built for the graph/history list; no separate
 // database.
 function renderTimelineRow(h, def, workoutsAsc) {
-  const flags = computeEntryPRFlags(workoutsAsc, def.id, h.workoutId);
+  const flags = computeEntryPRFlags(workoutsAsc, def.id, h.workoutId, def.name);
   const best = bestSetOf(h.entry);
   const monthLabel = new Date(h.date).toLocaleDateString(undefined, { month: "short", year: "numeric" });
   const perf = best ? `${roundTo(displayWeight(best.weight, "kg"))}kg × ${best.reps}` : "–";
@@ -4775,10 +5215,16 @@ function renderTimelineRow(h, def, workoutsAsc) {
     </div>`;
 }
 
-function sparkline(history) {
-  // Volume is stored canonically in kg, so the sparkline always plots kg
-  // regardless of any exercise's display-unit preference.
-  const values = history.map((h) => h.volume);
+// Epley formula — a reasonable, widely-used estimate from a single set's
+// weight and reps. Like any formula-based estimate it gets less reliable
+// above ~12 reps (fatigue changes the weight/reps relationship), but it's
+// the standard choice and good enough to show a directional trend line.
+function estimate1RM(weight, reps) {
+  if (!weight || !reps || reps <= 0) return weight || 0;
+  return weight * (1 + reps / 30);
+}
+
+function sparkline(values) {
   const max = Math.max(...values, 1);
   const min = Math.min(...values, 0);
   const range = max - min || 1;
@@ -5743,6 +6189,7 @@ function renderProgramExRow(e, type, isFirst, isLast) {
         <button class="link-btn" data-act="dec-sets" data-id="${e.id}" style="font-size:16px; padding:2px 9px; border:1px solid var(--c-hairline-strong); border-radius:6px;">−</button>
         <span class="numeric text-dim" style="min-width:30px; text-align:center;">${e.sets}×</span>
         <button class="link-btn" data-act="inc-sets" data-id="${e.id}" style="font-size:16px; padding:2px 9px; border:1px solid var(--c-hairline-strong); border-radius:6px;">+</button>
+        <button class="link-btn" data-act="edit-reps" data-id="${e.id}" data-current="${escapeHtml(e.targetReps || "")}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;">${e.targetReps ? `× ${escapeHtml(e.targetReps)}` : "+ Reps"}</button>
         <button class="link-btn" data-act="toggle-uni" data-id="${e.id}" data-current="${!!e.unilateral}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px; margin-left:4px;">${e.unilateral ? "Uni" : "Bi"}</button>
         <button class="link-btn" data-act="edit-muscles" data-id="${e.id}" title="${escapeHtml(muscleSummaryText(e))}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;">${escapeHtml(muscleChipText(e))}</button>
         <button class="link-btn" data-act="remove-ex" data-id="${e.id}" style="color:var(--c-crimson-bright); font-size:12px; margin-left:6px;">Remove</button>
@@ -5750,13 +6197,56 @@ function renderProgramExRow(e, type, isFirst, isLast) {
     </div>`;
 }
 
+// Extracts a set count (and, where present, a target rep count/range) from
+// one exercise line. Tries the richer "sets × reps" phrasings first so a
+// "4x10" line is read as 4 sets of 10 rather than falling through to a
+// bare "sets" match and silently losing the reps half. Returns null if no
+// set count is found at all (name-only lines keep the caller's default).
+//
+// BUGFIX: the previous version used a single regex requiring a \b word
+// boundary around "x" — e.g. (\d+)\s*(?:x|×)\b. That boundary only exists
+// when nothing word-like follows the "x" (so "4x " or "4x" at line-end
+// matched). The instant reps were attached with no space — "4x10", "3x8-12",
+// "5×5" — there's no boundary between the "x" and the following digit
+// (both are word characters), so the whole match silently failed and the
+// exercise defaulted to 2 sets with the "10"/"8-12" reps info discarded
+// entirely. That exact shorthand ("NxM") is the single most common way
+// people write a program, so this was the main thing broken.
+function extractSetsReps(line) {
+  const withReps = [
+    /(\d+)\s*(?:sets?)?\s*[x×]\s*(\d+(?:\s*-\s*\d+)?)\s*(?:reps?)?\b/i, // 4x10, 4 sets x 10, 3×8-12, 5x5
+    /(\d+)\s*sets?\s*(?:of\s*)?(\d+(?:\s*-\s*\d+)?)\s*reps?\b/i,        // 4 sets of 10 reps, 4 sets 8-12 reps
+    /(\d+)\s*sets?\s*[,\-–]\s*(\d+(?:\s*-\s*\d+)?)\s*reps?\b/i,         // 4 sets, 10 reps / 4 sets - 8-12 reps
+    /(\d+)\s*sets?\s*of\s*(\d+(?:\s*-\s*\d+)?)\b/i,                    // 4 sets of 10 (no "reps" word)
+  ];
+  for (const re of withReps) {
+    const m = line.match(re);
+    if (m) return { sets: parseInt(m[1], 10), reps: m[2].replace(/\s+/g, ""), text: m[0] };
+  }
+  const setsOnly = [
+    /(\d+)\s*sets?\b/i,      // 4 sets
+    /(\d+)\s*[x×](?!\d)/i,   // 4x  (not immediately followed by a digit — that case is handled above)
+    /[x×]\s*(\d+)\b/i,       // x4
+  ];
+  for (const re of setsOnly) {
+    const m = line.match(re);
+    if (m) return { sets: parseInt(m[1], 10), reps: null, text: m[0] };
+  }
+  return null;
+}
+
 // Parses free-typed program text into { [dayTypeKey]: [...] } for the
 // current PROGRAM_DAY_TYPES. A day type's label or key on its own line
 // switches which section following exercise lines fall into (starts in the
-// first day type until the first switch). Per exercise line: trailing "x4"
-// / "4x" / "3 sets" sets the set count (default 2), and the word
-// "unilateral" (or "uni", "single-arm", etc.) anywhere in the line marks it
-// unilateral and gets stripped from the name.
+// first day type until the first switch) — header lines tolerate common
+// decoration (markdown symbols, dashes, a trailing "Day 1", a colon), so
+// "## Upper ##", "-- Lower Day 2 --", and "Full Body:" all work, not just
+// an exact bare "Upper" / "Lower" / "Full Body" line. Per exercise line:
+// "4x10", "4x", "x4", "4 sets", "4 sets of 10", or "4 sets, 8-12 reps" all
+// set the set count (default 2) and, where a rep number/range is present,
+// the target reps shown alongside it later. The word "unilateral" (or
+// "uni", "single-arm", etc.) anywhere in the line marks it unilateral and
+// gets stripped from the name.
 function parseProgramText(text) {
   const lines = (text || "").split("\n").map((l) => l.trim()).filter(Boolean);
   const result = {};
@@ -5764,10 +6254,13 @@ function parseProgramText(text) {
   if (!PROGRAM_DAY_TYPES.length) return result;
   let section = PROGRAM_DAY_TYPES[0].key;
 
-  const headerMatch = (lowerLine) => PROGRAM_DAY_TYPES.find((dt) =>
-    lowerLine === dt.key.toLowerCase() || lowerLine === `${dt.key.toLowerCase()}:` || lowerLine === `${dt.key.toLowerCase()}-` ||
-    lowerLine === dt.label.toLowerCase() || lowerLine === `${dt.label.toLowerCase()}:` || lowerLine === `${dt.label.toLowerCase()}-`
-  );
+  const headerMatch = (lowerLine) => {
+    const cleaned = lowerLine
+      .replace(/^[#*\-–—_=\s]+|[#*\-–—_=\s:]+$/g, "")
+      .replace(/\bday\s*\d*\b/g, "")
+      .trim();
+    return PROGRAM_DAY_TYPES.find((dt) => cleaned === dt.key.toLowerCase() || cleaned === dt.label.toLowerCase());
+  };
 
   for (const raw of lines) {
     const lowerLine = raw.toLowerCase();
@@ -5784,10 +6277,12 @@ function parseProgramText(text) {
     }
 
     let sets = 2;
-    const setsMatch = line.match(/(?:(\d+)\s*(?:x|×)\b|\b(?:x|×)\s*(\d+)\b|(\d+)\s*sets?\b)/i);
-    if (setsMatch) {
-      sets = parseInt(setsMatch[1] || setsMatch[2] || setsMatch[3], 10);
-      line = line.replace(setsMatch[0], "");
+    let reps = null;
+    const setsReps = extractSetsReps(line);
+    if (setsReps) {
+      sets = setsReps.sets;
+      reps = setsReps.reps;
+      line = line.replace(setsReps.text, "");
     }
 
     const name = line
@@ -5797,7 +6292,7 @@ function parseProgramText(text) {
       .trim();
 
     if (!name) continue;
-    result[section].push({ name, sets: Math.max(1, Math.min(10, sets || 2)), unilateral });
+    result[section].push({ name, sets: Math.max(1, Math.min(10, sets || 2)), unilateral, reps });
   }
   return result;
 }
@@ -5866,21 +6361,26 @@ async function renderProgramOverview(container, navigate) {
         <label for="custom-ex-sets">Planned sets</label>
         <input type="number" id="custom-ex-sets" value="2" min="1" max="10">
       </div>
+      <div class="field">
+        <label for="custom-ex-reps">Target reps (optional)</label>
+        <input type="text" id="custom-ex-reps" placeholder="e.g. 8-12">
+      </div>
       <button class="btn btn-primary" id="custom-ex-add" style="margin-top:4px;">Add Exercise</button>
     </div>
 
     <div class="section-title"><h2>Paste Whole Program</h2></div>
     <div class="card">
-      <p class="text-faint" style="margin-top:0;">Type or paste your whole routine at once. Put a day type name (${PROGRAM_DAY_TYPES.map((dt) => `"${escapeHtml(dt.label)}"`).join(" / ")}) on its own line to switch sections. Add sets like "x4" or "3 sets", and the word "unilateral" to mark one-side-at-a-time exercises.</p>
+      <p class="text-faint" style="margin-top:0;">Type or paste your whole routine at once. Put a day type name (${PROGRAM_DAY_TYPES.map((dt) => `"${escapeHtml(dt.label)}"`).join(" / ")}) on its own line to switch sections — a little decoration around it is fine ("## Upper ##", "Lower Day 1:"). Add sets/reps like "4x10", "3 sets", or "4 sets of 8-12", and the word "unilateral" to mark one-side-at-a-time exercises.</p>
       <div class="field" style="margin-bottom:10px;">
         <textarea id="bulk-program-text" rows="9" placeholder="${PROGRAM_DAY_TYPES[0]?.label || "Day 1"}
-Bench Press x4
-Lateral Raise 3 sets unilateral
+Bench Press 4x10
+Lateral Raise 3x12-15 unilateral
 
 ${PROGRAM_DAY_TYPES[1]?.label || "Day 2"}
-Back Squat x4
-Bulgarian Split Squat 3 sets unilateral"></textarea>
+Back Squat 4x8
+Bulgarian Split Squat 3x10 unilateral"></textarea>
       </div>
+      <div id="bulk-program-preview" style="margin-bottom:12px;"></div>
       <button class="btn" id="bulk-program-apply">Apply</button>
       <p class="text-faint" style="margin:10px 0 0;">This sets your exercise list to what's typed here.</p>
     </div>
@@ -5921,6 +6421,22 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
       await storage.updateCustomExercise(id, { name: trimmed });
       applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
       toast("Exercise renamed — history stays linked to it");
+      renderProgramOverview(container, navigate);
+    });
+  });
+
+  qsa('[data-act="edit-reps"]', container).forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      const newReps = await textInputModal({
+        title: "Target Reps",
+        label: "e.g. 8-12, 5, or AMRAP — leave blank to remove",
+        initialValue: btn.dataset.current || "",
+        confirmLabel: "Save",
+      });
+      if (newReps === undefined) return;
+      await storage.updateCustomExercise(id, { targetReps: newReps.trim() || null });
+      applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
       renderProgramOverview(container, navigate);
     });
   });
@@ -6015,8 +6531,10 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
   qs("#custom-ex-add", container).addEventListener("click", async () => {
     const nameInput = qs("#custom-ex-name", container);
     const setsInput = qs("#custom-ex-sets", container);
+    const repsInput = qs("#custom-ex-reps", container);
     const name = nameInput.value.trim();
     const sets = Math.max(1, Math.min(10, Number(setsInput.value) || 1));
+    const targetReps = repsInput.value.trim() || null;
 
     if (!name) {
       toast("Enter a name for the exercise");
@@ -6026,11 +6544,41 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     const id = `custom-${slug || "exercise"}-${uid().slice(0, 6)}`;
 
-    await storage.addCustomExercise({ id, name, type: selectedType, sets, unilateral: selectedUni, muscles: newExerciseMuscles, createdAt: nowISO() });
+    await storage.addCustomExercise({ id, name, type: selectedType, sets, unilateral: selectedUni, muscles: newExerciseMuscles, targetReps, createdAt: nowISO() });
     applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
     toast(`${name} added to ${PROGRAM[selectedType]?.label || selectedType}`);
     renderProgramOverview(container, navigate);
   });
+
+  // Live preview — re-parses on every keystroke so a paste's result is
+  // visible immediately, instead of only finding out whether it parsed
+  // correctly after hitting Apply (previously the only way to check was to
+  // apply it and then look at Program Overview).
+  const renderBulkPreview = () => {
+    const previewEl = qs("#bulk-program-preview", container);
+    if (!previewEl) return;
+    const text = qs("#bulk-program-text", container).value;
+    if (!text.trim()) { previewEl.innerHTML = ""; return; }
+    const parsed = parseProgramText(text);
+    const total = PROGRAM_DAY_TYPES.reduce((sum, dt) => sum + (parsed[dt.key]?.length || 0), 0);
+    if (!total) {
+      previewEl.innerHTML = `<p class="text-faint" style="margin:0; color:var(--c-crimson-bright);">Couldn't find any exercises in that yet.</p>`;
+      return;
+    }
+    previewEl.innerHTML = `
+      <div style="border:1px solid var(--c-hairline); border-radius:8px; padding:10px 12px;">
+        <p class="text-faint" style="margin:0 0 8px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em;">Preview — ${total} exercise${total === 1 ? "" : "s"}</p>
+        ${PROGRAM_DAY_TYPES.filter((dt) => (parsed[dt.key] || []).length).map((dt) => `
+          <div style="margin-bottom:6px;">
+            <span class="text-dim" style="font-size:12.5px; font-weight:600;">${escapeHtml(dt.label)}</span>
+            <ul style="margin:2px 0 0; padding-left:18px; font-size:12.5px; color:var(--c-off-dim);">
+              ${parsed[dt.key].map((ex) => `<li>${escapeHtml(ex.name)} — ${ex.sets} sets${ex.reps ? ` × ${escapeHtml(ex.reps)} reps` : ""}${ex.unilateral ? " (unilateral)" : ""}</li>`).join("")}
+            </ul>
+          </div>`).join("")}
+      </div>`;
+  };
+  qs("#bulk-program-text", container).addEventListener("input", renderBulkPreview);
+  renderBulkPreview();
 
   qs("#bulk-program-apply", container).addEventListener("click", async () => {
     const text = qs("#bulk-program-text", container).value;
@@ -6061,7 +6609,7 @@ Bulgarian Split Squat 3 sets unilateral"></textarea>
       for (const ex of (parsed[dt.key] || [])) {
         const slug = ex.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
         const id = `custom-${slug || "exercise"}-${uid().slice(0, 6)}`;
-        await storage.addCustomExercise({ id, name: ex.name, type: dt.key, sets: ex.sets, unilateral: ex.unilateral, createdAt: nowISO() });
+        await storage.addCustomExercise({ id, name: ex.name, type: dt.key, sets: ex.sets, unilateral: ex.unilateral, targetReps: ex.reps || null, createdAt: nowISO() });
       }
     }
     applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
