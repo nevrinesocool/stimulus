@@ -6217,7 +6217,25 @@ function renderProgramExRow(e, type, isFirst, isLast) {
 // exercise defaulted to 2 sets with the "10"/"8-12" reps info discarded
 // entirely. That exact shorthand ("NxM") is the single most common way
 // people write a program, so this was the main thing broken.
+//
+// BUGFIX: a bare "NxM" has no way to know which side is sets and which is
+// reps, so that shorthand stays sets-first by convention. But when the
+// words "reps" and "sets" are spelled out, the order is no longer
+// ambiguous — "10 reps x 4 sets" unambiguously means 4 sets of 10, not 10
+// sets of 4. The repsFirst patterns below catch that explicit-word reversed
+// order (checked before the generic setsOnly fallback, which would
+// otherwise match just the "4 sets" half and silently drop the reps, the
+// same failure mode as the "NxM" bug above).
 function extractSetsReps(line) {
+  const repsFirst = [
+    /(\d+(?:\s*-\s*\d+)?)\s*reps?\s*[x×]\s*(\d+)\s*sets?\b/i,        // 10 reps x 4 sets, 8-12 reps x 3 sets
+    /(\d+(?:\s*-\s*\d+)?)\s*reps?\s*[,\-–]\s*(\d+)\s*sets?\b/i,       // 10 reps, 4 sets
+    /(\d+(?:\s*-\s*\d+)?)\s*reps?\s*of\s*(\d+)\s*sets?\b/i,           // 10 reps of 4 sets
+  ];
+  for (const re of repsFirst) {
+    const m = line.match(re);
+    if (m) return { sets: parseInt(m[2], 10), reps: m[1].replace(/\s+/g, ""), text: m[0] };
+  }
   const withReps = [
     /(\d+)\s*(?:sets?)?\s*[x×]\s*(\d+(?:\s*-\s*\d+)?)\s*(?:reps?)?\b/i, // 4x10, 4 sets x 10, 3×8-12, 5x5
     /(\d+)\s*sets?\s*(?:of\s*)?(\d+(?:\s*-\s*\d+)?)\s*reps?\b/i,        // 4 sets of 10 reps, 4 sets 8-12 reps
@@ -6242,23 +6260,37 @@ function extractSetsReps(line) {
 
 // Extracts a per-exercise rest duration (in seconds) from one program line,
 // keyed off the word "rest" so it can never be confused with a sets/reps
-// count. Tried in order: "rest 2:00" (mm:ss), "rest 90s" / "rest 90 sec",
-// "rest 2min" / "rest 1.5 minutes", then a bare "rest 90" with no unit —
-// for the bare case, 10-or-under is read as minutes and anything above
-// that as seconds, since that matches how people actually shorthand rest
-// ("rest 2" means 2:00, "rest 90" means 0:90). Returns null if the line
-// has no "rest" mention at all.
+// count. Checked in both directions, since real pasted programs write the
+// time on either side of the word ("rest 90s" as often as "90s rest"), and
+// in order: "1m30s" / "1 min 30 sec" (compound minutes+seconds), "2:00"
+// (mm:ss), "90s" / "90 sec", "2min" / "1.5 minutes", then a bare "90" with
+// no unit — for the bare case, 10-or-under is read as minutes and anything
+// above that as seconds, since that matches how people actually shorthand
+// rest ("rest 2" means 2:00, "rest 90" means 0:90). A few common filler
+// words ("rest period: 90s", "rest time 90s") are tolerated between "rest"
+// and the number. Returns null if the line has no "rest" mention near a
+// number at all.
+const REST_FILLER = "(?:\\s+(?:period|time|interval|duration))?";
+const REST_GAP = ".{0,15}";
 function extractRest(line) {
-  const mmss = line.match(/\brest\s*:?\s*(\d+)\s*:\s*([0-5]\d)\b/i);
+  const compound = line.match(new RegExp(`\\brest${REST_FILLER}\\s*:?\\s*(\\d+)\\s*(?:m|min|mins|minute|minutes)\\s*(\\d{1,2})\\s*(?:s|sec|secs|second|seconds)?\\b`, "i"))
+    || line.match(new RegExp(`\\b(\\d+)\\s*(?:m|min|mins|minute|minutes)\\s*(\\d{1,2})\\s*(?:s|sec|secs|second|seconds)?\\b${REST_GAP}\\brest\\b`, "i"));
+  if (compound) return { seconds: parseInt(compound[1], 10) * 60 + parseInt(compound[2], 10), text: compound[0] };
+
+  const mmss = line.match(new RegExp(`\\brest${REST_FILLER}\\s*:?\\s*(\\d+)\\s*:\\s*([0-5]\\d)\\b`, "i"))
+    || line.match(new RegExp(`\\b(\\d+)\\s*:\\s*([0-5]\\d)\\b${REST_GAP}\\brest\\b`, "i"));
   if (mmss) return { seconds: parseInt(mmss[1], 10) * 60 + parseInt(mmss[2], 10), text: mmss[0] };
 
-  const mins = line.match(/\brest\s*:?\s*(\d+(?:\.\d+)?)\s*(?:min(?:ute)?s?|m)\b/i);
+  const mins = line.match(new RegExp(`\\brest${REST_FILLER}\\s*:?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:min(?:ute)?s?|m)\\b`, "i"))
+    || line.match(new RegExp(`\\b(\\d+(?:\\.\\d+)?)\\s*(?:min(?:ute)?s?|m)\\b${REST_GAP}\\brest\\b`, "i"));
   if (mins) return { seconds: Math.round(parseFloat(mins[1]) * 60), text: mins[0] };
 
-  const secs = line.match(/\brest\s*:?\s*(\d+)\s*(?:sec(?:ond)?s?|s)\b/i);
+  const secs = line.match(new RegExp(`\\brest${REST_FILLER}\\s*:?\\s*(\\d+)\\s*(?:sec(?:ond)?s?|s)\\b`, "i"))
+    || line.match(new RegExp(`\\b(\\d+)\\s*(?:sec(?:ond)?s?|s)\\b${REST_GAP}\\brest\\b`, "i"));
   if (secs) return { seconds: parseInt(secs[1], 10), text: secs[0] };
 
-  const bare = line.match(/\brest\s*:?\s*(\d+)\b/i);
+  const bare = line.match(new RegExp(`\\brest${REST_FILLER}\\s*:?\\s*(\\d+)\\b`, "i"))
+    || line.match(/\b(\d+)\b\s*\brest\b/i);
   if (bare) {
     const n = parseInt(bare[1], 10);
     return { seconds: n <= 10 ? n * 60 : n, text: bare[0] };
@@ -6278,10 +6310,11 @@ function extractRest(line) {
 // set the set count (default 2) and, where a rep number/range is present,
 // the target reps shown alongside it later. The word "unilateral" (or
 // "uni", "single-arm", etc.) anywhere in the line marks it unilateral and
-// gets stripped from the name. A "rest" mention ("rest 90s", "rest 2min",
-// "rest 2:00") sets that exercise's per-exercise rest timer override
-// (see extractRest) and is likewise stripped from the name; exercises with
-// no "rest" mention keep using the global rest timer default. Note: RIR is
+// gets stripped from the name. A "rest" mention ("rest 90s", "90s rest",
+// "rest 2min", "rest 2:00", "1m30s rest") — time before or after the word
+// — sets that exercise's per-exercise rest timer override (see extractRest)
+// and is likewise stripped from the name; exercises with no "rest" mention
+// keep using the global rest timer default. Note: RIR is
 // not part of this text — it's logged per set during a workout, not
 // planned ahead of time, so there's nothing to parse here for it.
 function parseProgramText(text) {
@@ -6338,7 +6371,9 @@ function parseProgramText(text) {
 
     const name = line
       .replace(/^[-*•\d.\)]+\s*/, "")
-      .replace(/[-–,:]+\s*$/, "")
+      .replace(/\(\s*\)|\[\s*\]/g, " ")
+      .replace(/(^|\s)[,;:\-–—.]+(?=\s|$)/g, "$1")
+      .replace(/[-–—,:]+\s*$/, "")
       .replace(/\s{2,}/g, " ")
       .trim();
 
@@ -6421,7 +6456,7 @@ async function renderProgramOverview(container, navigate) {
 
     <div class="section-title"><h2>Paste Whole Program</h2></div>
     <div class="card">
-      <p class="text-faint" style="margin-top:0;">Type or paste your whole routine at once. Put a day type name (${PROGRAM_DAY_TYPES.map((dt) => `"${escapeHtml(dt.label)}"`).join(" / ")}) on its own line to switch sections — a little decoration around it is fine ("## Upper ##", "Lower Day 1:"). Add sets/reps like "4x10", "3 sets", or "4 sets of 8-12", the word "unilateral" to mark one-side-at-a-time exercises, and "rest 90s" / "rest 2min" / "rest 2:00" to give that exercise its own rest timer instead of using your default.</p>
+      <p class="text-faint" style="margin-top:0;">Type or paste your whole routine at once. Put a day type name (${PROGRAM_DAY_TYPES.map((dt) => `"${escapeHtml(dt.label)}"`).join(" / ")}) on its own line to switch sections — a little decoration around it is fine ("## Upper ##", "Lower Day 1:"). Add sets/reps like "4x10", "3 sets", or "4 sets of 8-12", the word "unilateral" to mark one-side-at-a-time exercises, and "rest 90s" / "90s rest" / "rest 2min" / "rest 2:00" (either order works) to give that exercise its own rest timer instead of using your default.</p>
       <div class="field" style="margin-bottom:10px;">
         <textarea id="bulk-program-text" rows="9" placeholder="${PROGRAM_DAY_TYPES[0]?.label || "Day 1"}
 Bench Press 4x10 rest 2:30
