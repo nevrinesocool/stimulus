@@ -14,7 +14,7 @@
 // deleted on the next activate like any other version bump.
 // ============================================================================
 
-const CACHE_VERSION = "v27";
+const CACHE_VERSION = "v28";
 const CACHE_NAME = `stimulus-shell-${CACHE_VERSION}`;
 
 // Paths are relative to this file's own location so the app works correctly
@@ -39,6 +39,23 @@ self.addEventListener("activate", (event) => {
     caches.keys().then((keys) =>
       Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
+  );
+});
+
+// Rest-timer notifications (fired from the page via
+// registration.showNotification when a rest period ends while the tab is
+// backgrounded/locked — see finishRestTimer() in index.html). Handling the
+// click here just focuses/reopens the app instead of leaving the
+// notification inert once tapped.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ("focus" in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow("./index.html");
+    })
   );
 });
 

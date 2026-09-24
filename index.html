@@ -1164,6 +1164,47 @@ function completedWorkoutsAsc(workouts) {
     .sort((a, b) => new Date(a.startedAt) - new Date(b.startedAt));
 }
 
+// Same running-max weight/reps definition as computeEntryPRFlags above, just
+// returning the aggregate rather than a per-workout flag — this is exactly
+// "the max as of right before workoutId" for a workoutId that isn't in the
+// list yet, which is exactly what an in-progress active workout is. Used to
+// flag a PR live, the moment a set is marked complete, instead of only
+// after the workout is saved and viewed back in History.
+function historicalBestForExercise(workoutsAsc, exerciseId, exerciseName) {
+  let maxWeight = 0, maxReps = 0;
+  for (const w of workoutsAsc) {
+    const entry = findExerciseEntryInWorkout(w, exerciseId, exerciseName);
+    if (!entry) continue;
+    const best = bestSetOf(entry);
+    if (!best) continue;
+    maxWeight = Math.max(maxWeight, best.weight);
+    maxReps = Math.max(maxReps, best.maxReps);
+  }
+  return { maxWeight, maxReps };
+}
+
+// Call right after marking a set complete in the active workout. Compares
+// this exercise's best set so far *this session* against its all-time best
+// from before the session (cachedHistoricalBestByExercise) and toasts when
+// either running max — heaviest weight, or most reps in a single set,
+// tracked independently, same as the after-the-fact History badges — just
+// got broken. Deliberately reuses that exact definition rather than
+// introducing an est.-1RM-based PR too: the app already picked one
+// consistent definition for "PR", and a second, different definition living
+// only in the live toast would just be confusing.
+function checkLivePR(exerciseId, exerciseName, entry) {
+  const prior = cachedHistoricalBestByExercise[exerciseId];
+  if (!prior) return;
+  const best = bestSetOf(entry);
+  if (!best) return;
+  const weightPR = best.weight > prior.maxWeight;
+  const repsPR = best.maxReps > prior.maxReps;
+  if (!weightPR && !repsPR) return;
+  const label = weightPR && repsPR ? "New weight & reps PR" : weightPR ? "New weight PR" : "New rep PR";
+  hapticTap([15, 40, 15, 40, 15, 40, 30]);
+  toast(`🏆 ${label} — ${exerciseName}`, { duration: 3800 });
+}
+
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
@@ -2611,6 +2652,69 @@ function closeAnyModal() {
 }
 
 // ============================================================================
+// ACCESSIBILITY — focus trap + focus restoration, shared across every modal.
+// Every modal builder in this file (confirmModal, pickOptionModal,
+// openExerciseOptionsModal, the muscle editor, plate calculator, schedule
+// override, program setup's sequence editor, etc.) follows the same shape:
+// build a `.modal-overlay` > `.modal-sheet` and append it to modalRoot, then
+// `overlay.remove()` it (or clear modalRoot via closeAnyModal) on close.
+// Watching modalRoot for that append/remove — rather than editing each of
+// those builders individually — lets one observer trap Tab focus inside
+// whichever dialog is currently open and hand focus back to whatever
+// triggered it the moment that dialog closes, for all of them at once,
+// including any future one that follows the same shape.
+// ============================================================================
+const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function focusableIn(root) {
+  return qsa(FOCUSABLE_SELECTOR, root).filter((el) => el.offsetParent !== null);
+}
+
+function handleModalTrapKeydown(e) {
+  if (e.key !== "Tab") return;
+  const overlay = e.currentTarget;
+  const focusables = focusableIn(overlay);
+  if (!focusables.length) { e.preventDefault(); return; }
+  const first = focusables[0], last = focusables[focusables.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  else if (!focusables.includes(document.activeElement)) { e.preventDefault(); first.focus(); }
+}
+
+let modalTrapReturnFocus = null;
+const modalRootObserver = new MutationObserver((mutations) => {
+  for (const m of mutations) {
+    for (const node of m.addedNodes) {
+      if (!(node instanceof HTMLElement) || !node.classList.contains("modal-overlay")) continue;
+      modalTrapReturnFocus = document.activeElement;
+      node.addEventListener("keydown", handleModalTrapKeydown);
+      // Focus the dialog panel itself, not a specific control inside it —
+      // every modal here differs in what its "natural" first control would
+      // be (a text field, a destructive confirm button, an option list),
+      // and auto-focusing an input can pop a mobile keyboard the instant
+      // the sheet appears. Focusing the panel with role="dialog" is enough
+      // for a screen reader to announce it, and Tab from there reaches the
+      // sheet's real first control normally.
+      requestAnimationFrame(() => {
+        if (!node.isConnected) return;
+        const sheet = qs(".modal-sheet", node) || node;
+        if (!sheet.hasAttribute("tabindex")) sheet.setAttribute("tabindex", "-1");
+        sheet.focus({ preventScroll: true });
+      });
+    }
+    for (const node of m.removedNodes) {
+      if (!(node instanceof HTMLElement) || !node.classList.contains("modal-overlay")) continue;
+      node.removeEventListener("keydown", handleModalTrapKeydown);
+      if (modalTrapReturnFocus && document.contains(modalTrapReturnFocus) && typeof modalTrapReturnFocus.focus === "function") {
+        modalTrapReturnFocus.focus({ preventScroll: true });
+      }
+      modalTrapReturnFocus = null;
+    }
+  }
+});
+modalRootObserver.observe(modalRoot, { childList: true });
+
+// ============================================================================
 // REST TIMER — a floating countdown between sets. It lives in its own fixed
 // region outside <main>, driven by its own interval, so it keeps counting
 // down even while the user flips to History/Settings/etc and back — the
@@ -2670,6 +2774,25 @@ function restoreRestTimerFromStorage() {
   }
 }
 
+// Best-effort permission request, fired once per page load the first time a
+// rest timer actually starts (rather than on page load) so the browser's
+// permission prompt shows up tied to something the user just did, not as a
+// cold-open interruption. No-ops silently wherever Notification doesn't
+// exist (unsupported) or the user has already granted/denied it — never
+// re-prompts once a decision has been made.
+let notificationPermissionRequested = false;
+function requestNotificationPermissionOnce() {
+  if (notificationPermissionRequested) return;
+  notificationPermissionRequested = true;
+  if (!("Notification" in window) || Notification.permission !== "default") return;
+  try {
+    Notification.requestPermission().catch(() => {});
+  } catch (_) {
+    /* older Safari uses a callback-style API instead of a Promise */
+    try { Notification.requestPermission(() => {}); } catch (_) { /* ignore */ }
+  }
+}
+
 function startRestTimer(seconds, label) {
   if (!seconds || seconds <= 0) return;
   if (restTimer && restTimer.intervalId) clearInterval(restTimer.intervalId);
@@ -2683,6 +2806,7 @@ function startRestTimer(seconds, label) {
   restTimer.intervalId = setInterval(tickRestTimer, 250);
   renderRestTimerBar();
   persistRestTimer();
+  requestNotificationPermissionOnce();
 }
 
 function dismissRestTimer() {
@@ -2712,6 +2836,37 @@ function finishRestTimer() {
   hapticTap([15, 60, 15, 60, 15]);
   if (!cachedSettings || cachedSettings.restTimerSound !== false) playRestTimerChime();
   toast(`Rest over — back to ${label}`, { duration: 3800 });
+  notifyRestTimerFinished(label);
+}
+
+// Fires a system notification through the service worker when the rest
+// timer ends while this tab isn't the one in front of the user — backgrounded
+// (they switched apps/tabs) or the device is locked, both of which report
+// document.visibilityState as anything but "visible". A foregrounded tab
+// already gets the chime + vibration + toast above, so a notification there
+// would just be a redundant duplicate alert. Silently does nothing if
+// notifications were never granted, aren't supported, or no service worker
+// is registered — this is a nicety on top of the always-on in-app alert
+// above, never the only way the user finds out rest is over.
+function notifyRestTimerFinished(label) {
+  try {
+    if (document.visibilityState === "visible") return;
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.ready.then((reg) => {
+      reg.showNotification("Rest over", {
+        body: `Back to ${label}`,
+        icon: "./icon-192.png",
+        badge: "./icon-192.png",
+        tag: "stimulus-rest-timer",
+        renotify: true,
+        vibrate: [15, 60, 15, 60, 15],
+      }).catch(() => {});
+    }).catch(() => {});
+  } catch (_) {
+    /* Notification/serviceWorker misbehaving in this browser — the in-app
+       chime/toast above already covers it, so just drop this quietly. */
+  }
 }
 
 function pauseResumeRestTimer() {
@@ -3316,6 +3471,7 @@ const dashboard = { render: dashboardRender };
 let tickInterval = null;
 let cachedSettings = null;
 let cachedPreviousByExercise = {}; // exerciseId -> last completed entry (from history, excluding current active workout)
+let cachedHistoricalBestByExercise = {}; // exerciseId -> { maxWeight, maxReps } across all history before this session (see computeEntryPRFlags — same weight/reps definition, just aggregated rather than tied to one workout)
 let dashboardPeriodRange = "weekly"; // weekly | monthly | yearly — Dashboard's period-comparison bar chart
 let dashboardVolumeTypeFilter = "all"; // "all" or a PROGRAM_DAY_TYPES key — narrows the Volume by Period chart to one workout type
 let dashboardVolumeUnit = "kg"; // "kg" | "lb" — display unit for the Volume by Period chart and the Total Volume stat
@@ -3610,9 +3766,12 @@ async function renderActiveWorkout(container, navigate) {
 
   // Pre-compute "previous performance" for every exercise, excluding this active session.
   const history = await storage.getWorkouts();
+  const workoutsAscForPR = completedWorkoutsAsc(history);
   cachedPreviousByExercise = {};
+  cachedHistoricalBestByExercise = {};
   for (const entry of active.exercises) {
     cachedPreviousByExercise[entry.exerciseId] = findPreviousEntry(history, entry.exerciseId, entry.name);
+    cachedHistoricalBestByExercise[entry.exerciseId] = historicalBestForExercise(workoutsAscForPR, entry.exerciseId, entry.name);
   }
 
   paintActiveWorkout(container, active, navigate);
@@ -3886,6 +4045,7 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
         if (restTimerShouldAutoStart()) {
           startRestTimer(getExerciseRestSeconds(cachedSettings, entry.exerciseId), `${entry.name} · Set ${Number(set) + 1}`);
         }
+        checkLivePR(entry.exerciseId, entry.name, entry);
       }
       updateSetRowUI(container, entry.exerciseId, Number(set), s);
       queueActiveWorkoutSave(workout);
@@ -3898,7 +4058,13 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
   qsa('.set-index', container).forEach((idx) => {
     idx.style.cursor = "pointer";
     idx.title = "Tap to mark skipped";
-    idx.addEventListener("click", () => {
+    // Keyboard/screen-reader access: this is a plain <div>, not a <button>,
+    // so without these it's invisible to Tab and unreadable to a screen
+    // reader despite being a real toggle.
+    idx.setAttribute("role", "button");
+    idx.setAttribute("tabindex", "0");
+    idx.setAttribute("aria-label", `Mark set ${idx.textContent} skipped`);
+    const toggleSkip = () => {
       const row = idx.closest(".set-row");
       const exercise = row.dataset.exercise, set = Number(row.dataset.set);
       const entry = workout.exercises.find((e) => e.exerciseId === exercise);
@@ -3908,6 +4074,12 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
       updateSetRowUI(container, exercise, set, s);
       queueActiveWorkoutSave(workout);
       updateProgressUI(container, workout);
+    };
+    idx.addEventListener("click", toggleSkip);
+    idx.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+      toggleSkip();
     });
   });
 
@@ -4064,6 +4236,7 @@ function rewireExerciseCard(container, workout, exerciseId) {
         if (restTimerShouldAutoStart()) {
           startRestTimer(getExerciseRestSeconds(cachedSettings, entry.exerciseId), `${entry.name} · Set ${Number(set) + 1}`);
         }
+        checkLivePR(entry.exerciseId, entry.name, entry);
       }
       updateSetRowUI(container, entry.exerciseId, Number(set), s);
       queueActiveWorkoutSave(workout);
@@ -4071,7 +4244,10 @@ function rewireExerciseCard(container, workout, exerciseId) {
     });
   });
   qsa('.set-index', card).forEach((idx) => {
-    idx.addEventListener("click", () => {
+    idx.setAttribute("role", "button");
+    idx.setAttribute("tabindex", "0");
+    idx.setAttribute("aria-label", `Mark set ${idx.textContent} skipped`);
+    const toggleSkip = () => {
       const row = idx.closest(".set-row");
       const exercise = row.dataset.exercise, set = Number(row.dataset.set);
       const entry = workout.exercises.find((e) => e.exerciseId === exercise);
@@ -4080,6 +4256,12 @@ function rewireExerciseCard(container, workout, exerciseId) {
       updateSetRowUI(container, exercise, set, s);
       queueActiveWorkoutSave(workout);
       updateProgressUI(container, workout);
+    };
+    idx.addEventListener("click", toggleSkip);
+    idx.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+      toggleSkip();
     });
   });
   qsa('[data-act="use-prev-weight"]', card).forEach((btn) => btn.addEventListener("click", () => applyPrevious(container, workout, exerciseId, "weight")));
@@ -4448,6 +4630,7 @@ function openSubstituteModal(container, workout, exerciseId, navigate) {
     toast(`Substituted ${newDef.name}`);
     const history = await storage.getWorkouts();
     cachedPreviousByExercise[newDef.id] = findPreviousEntry(history, newDef.id, newDef.name);
+    cachedHistoricalBestByExercise[newDef.id] = historicalBestForExercise(completedWorkoutsAsc(history), newDef.id, newDef.name);
     const card = qs(`.exercise-card[data-exercise="${oldId}"]`, container);
     if (card) card.outerHTML = renderExerciseCard(entry, workout);
     rewireExerciseCard(container, workout, newDef.id);
@@ -4614,9 +4797,9 @@ function renderHistoryCalendarHtml(workouts) {
 
   return `
     <div class="flex-between" style="margin-bottom:10px;">
-      <button class="link-btn" data-act="cal-prev">‹</button>
+      <button class="link-btn" data-act="cal-prev" aria-label="Previous month">‹</button>
       <span style="font-weight:600;">${monthLabel}</span>
-      <button class="link-btn" data-act="cal-next">›</button>
+      <button class="link-btn" data-act="cal-next" aria-label="Next month">›</button>
     </div>
     <div class="cal-weekdays">${["S", "M", "T", "W", "T", "F", "S"].map((d) => `<span>${d}</span>`).join("")}</div>
     <div class="cal-grid">${cells}</div>
@@ -4865,9 +5048,9 @@ function renderHistSetRow(entry, set, i, settings, editMode) {
 
   return `
     <div class="set-row ${rowClass}" data-set="${i}">
-      <div class="set-index" data-act="toggle-skip" data-set="${i}" style="cursor:pointer;">${i + 1}</div>
+      <div class="set-index" data-act="toggle-skip" data-set="${i}" role="button" tabindex="0" aria-label="Mark set ${i + 1} skipped" style="cursor:pointer;">${i + 1}</div>
       <div class="set-inputs">${inputs}</div>
-      <button class="set-complete-btn" data-act="toggle-complete" data-set="${i}">${icon}</button>
+      <button class="set-complete-btn" data-act="toggle-complete" data-set="${i}" aria-label="Mark set ${i + 1} complete">${icon}</button>
     </div>
     ${renderHistRirRow(set, i)}`;
 }
@@ -4961,11 +5144,17 @@ function wireEditHandlers(container, workout, navigate, params) {
       });
     });
     qsa('[data-act="toggle-skip"]', card).forEach((el) => {
-      el.addEventListener("click", () => {
+      const toggleSkip = () => {
         const s = entry.sets[Number(el.dataset.set)];
         if (s.skipped) s.skipped = false; else { s.skipped = true; s.completed = false; }
         persistEdit(workout);
         historyRenderDetail(container, navigate, params, { editMode: true });
+      };
+      el.addEventListener("click", toggleSkip);
+      el.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        toggleSkip();
       });
     });
     qsa('[data-act="hist-set-rir"]', card).forEach((btn) => {
@@ -5596,14 +5785,14 @@ function sequenceEditorHTML(seq, dayTypeOptions, labelsMap) {
       ${seq.map((key, i) => `
         <div class="flex-between" style="gap:8px; padding:7px 0; border-top:1px solid var(--c-hairline); align-items:center;">
           <span style="display:flex; flex-direction:column; gap:1px;">
-            <button class="link-btn" data-act="seq-up" data-idx="${i}" ${i === 0 ? "disabled" : ""} style="font-size:10px; padding:0 6px; line-height:1.3; ${i === 0 ? "opacity:0.3;" : ""}">▲</button>
-            <button class="link-btn" data-act="seq-down" data-idx="${i}" ${i === seq.length - 1 ? "disabled" : ""} style="font-size:10px; padding:0 6px; line-height:1.3; ${i === seq.length - 1 ? "opacity:0.3;" : ""}">▼</button>
+            <button class="link-btn" data-act="seq-up" data-idx="${i}" ${i === 0 ? "disabled" : ""} aria-label="Move day ${i + 1} earlier" style="font-size:10px; padding:0 6px; line-height:1.3; ${i === 0 ? "opacity:0.3;" : ""}">▲</button>
+            <button class="link-btn" data-act="seq-down" data-idx="${i}" ${i === seq.length - 1 ? "disabled" : ""} aria-label="Move day ${i + 1} later" style="font-size:10px; padding:0 6px; line-height:1.3; ${i === seq.length - 1 ? "opacity:0.3;" : ""}">▼</button>
           </span>
           <span class="text-faint numeric" style="min-width:20px;">${i + 1}</span>
-          <select data-idx="${i}" class="seq-type-select" style="flex:1; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:9px 8px; font-size:13px;">
+          <select data-idx="${i}" class="seq-type-select" aria-label="Day ${i + 1} type" style="flex:1; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:9px 8px; font-size:13px;">
             ${typeOptions.map((k) => `<option value="${k}" ${k === key ? "selected" : ""}>${escapeHtml(labelsMap[k] || k)}</option>`).join("")}
           </select>
-          <button class="link-btn" data-act="seq-remove" data-idx="${i}" style="color:var(--c-crimson-bright); font-size:16px; padding:2px 6px;">✕</button>
+          <button class="link-btn" data-act="seq-remove" data-idx="${i}" aria-label="Remove day ${i + 1}" style="color:var(--c-crimson-bright); font-size:16px; padding:2px 6px;">✕</button>
         </div>`).join("")}
     </div>
     <div class="btn-row" style="margin-top:14px;">
@@ -6184,16 +6373,23 @@ function renderProgramExRow(e, type, isFirst, isLast) {
     <div class="flex-between" style="padding:8px 0; border-top:1px solid var(--c-hairline); gap:8px; flex-wrap:wrap;">
       <span style="display:flex; align-items:center; gap:6px;">
         <span style="display:flex; flex-direction:column; gap:1px;">
-          <button class="link-btn" data-act="move-up" data-id="${e.id}" data-type="${type}" ${isFirst ? "disabled" : ""} style="font-size:10px; padding:0 6px; line-height:1.3; ${isFirst ? "opacity:0.3;" : ""}">▲</button>
-          <button class="link-btn" data-act="move-down" data-id="${e.id}" data-type="${type}" ${isLast ? "disabled" : ""} style="font-size:10px; padding:0 6px; line-height:1.3; ${isLast ? "opacity:0.3;" : ""}">▼</button>
+          <button class="link-btn" data-act="move-up" data-id="${e.id}" data-type="${type}" ${isFirst ? "disabled" : ""} aria-label="Move ${escapeHtml(e.name)} up" style="font-size:10px; padding:0 6px; line-height:1.3; ${isFirst ? "opacity:0.3;" : ""}">▲</button>
+          <button class="link-btn" data-act="move-down" data-id="${e.id}" data-type="${type}" ${isLast ? "disabled" : ""} aria-label="Move ${escapeHtml(e.name)} down" style="font-size:10px; padding:0 6px; line-height:1.3; ${isLast ? "opacity:0.3;" : ""}">▼</button>
         </span>
-        <span>${escapeHtml(e.name)} ${e.unilateral ? `<span class="badge badge-uni" style="margin-left:6px;">Unilateral</span>` : ""}</span>
+        <span>
+          ${e.supersetGroup ? `<span class="text-faint numeric" title="Superset group ${escapeHtml(e.supersetGroup)}">[${escapeHtml(e.supersetGroup)}]</span> ` : ""}${escapeHtml(e.name)}
+          ${e.unilateral ? `<span class="badge badge-uni" style="margin-left:6px;">Unilateral</span>` : ""}
+          ${e.isWarmup ? `<span class="badge" style="margin-left:6px;">Warm-up</span>` : ""}
+          ${e.targetRPE ? `<span class="text-faint" style="font-size:11px; margin-left:6px;">RPE ${escapeHtml(e.targetRPE)}</span>` : ""}
+          ${e.targetRIR ? `<span class="text-faint" style="font-size:11px; margin-left:6px;">RIR ${escapeHtml(e.targetRIR)}</span>` : ""}
+          ${e.targetPercent ? `<span class="text-faint" style="font-size:11px; margin-left:6px;">${e.targetPercent}%</span>` : ""}
+        </span>
       </span>
       <span style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
         <button class="link-btn" data-act="rename-ex" data-id="${e.id}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;">Rename</button>
-        <button class="link-btn" data-act="dec-sets" data-id="${e.id}" style="font-size:16px; padding:2px 9px; border:1px solid var(--c-hairline-strong); border-radius:6px;">−</button>
+        <button class="link-btn" data-act="dec-sets" data-id="${e.id}" aria-label="Decrease sets for ${escapeHtml(e.name)}" style="font-size:16px; padding:2px 9px; border:1px solid var(--c-hairline-strong); border-radius:6px;">−</button>
         <span class="numeric text-dim" style="min-width:30px; text-align:center;">${e.sets}×</span>
-        <button class="link-btn" data-act="inc-sets" data-id="${e.id}" style="font-size:16px; padding:2px 9px; border:1px solid var(--c-hairline-strong); border-radius:6px;">+</button>
+        <button class="link-btn" data-act="inc-sets" data-id="${e.id}" aria-label="Increase sets for ${escapeHtml(e.name)}" style="font-size:16px; padding:2px 9px; border:1px solid var(--c-hairline-strong); border-radius:6px;">+</button>
         <button class="link-btn" data-act="edit-reps" data-id="${e.id}" data-current="${escapeHtml(e.targetReps || "")}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;">${e.targetReps ? `× ${escapeHtml(e.targetReps)}` : "+ Reps"}</button>
         <button class="link-btn" data-act="toggle-uni" data-id="${e.id}" data-current="${!!e.unilateral}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px; margin-left:4px;">${e.unilateral ? "Uni" : "Bi"}</button>
         <button class="link-btn" data-act="edit-muscles" data-id="${e.id}" title="${escapeHtml(muscleSummaryText(e))}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;">${escapeHtml(muscleChipText(e))}</button>
@@ -6299,6 +6495,62 @@ function extractRest(line) {
   return null;
 }
 
+// Extracts a target RPE (Rate of Perceived Exertion) from a program line —
+// "@RPE8", "@ RPE 8", "RPE8", "RPE 8", "RPE:8", or a range like "RPE 7-8" /
+// "RPE7.5". This is a *planned target* written into the program text ahead
+// of time ("do these at RPE8"), which is a different thing from the RIR a
+// person logs per set while actually performing it (see RIR_OPTIONS/set.rir)
+// — a pasted program can carry a target for one, the other, both, or
+// neither. Returns null if the line has no RPE mention.
+function extractRPE(line) {
+  const m = line.match(/@?\s*\bRPE\s*:?\s*(\d+(?:\.\d)?(?:\s*-\s*\d+(?:\.\d)?)?)\b/i);
+  if (!m) return null;
+  return { value: m[1].replace(/\s+/g, ""), text: m[0] };
+}
+
+// Extracts a target RIR (Reps In Reserve) from a program line — "RIR2",
+// "RIR 2", "RIR:2", "2RIR", or a range like "RIR 1-2". Same "planned target,
+// written ahead of time" distinction as extractRPE above: this becomes
+// targetRIR on the exercise definition, separate from the per-set RIR
+// logged live during a workout. Checked after extractRPE is stripped from
+// the line by the caller, so "RPE8 RIR2" on one line resolves both
+// independently rather than one regex eating the other's digits.
+function extractTargetRIR(line) {
+  const m = line.match(/\bRIR\s*:?\s*(\d+(?:\.\d)?(?:\s*-\s*\d+(?:\.\d)?)?)\b/i) || line.match(/\b(\d+(?:\.\d)?)\s*RIR\b/i);
+  if (!m) return null;
+  return { value: m[1].replace(/\s+/g, ""), text: m[0] };
+}
+
+// Extracts a percentage-based load target — "@ 80%", "80%", "@80%1RM",
+// "80% of 1RM". Stored as targetPercent (a plain number, e.g. 80) rather
+// than converted to weight here — actual 1RM-based weight math depends on
+// the lift's estimated 1RM at the time a workout is logged, not at
+// paste-time, so this just carries the intent forward.
+function extractPercent(line) {
+  const m = line.match(/@?\s*(\d+(?:\.\d+)?)\s*%(?:\s*(?:of\s*)?1?RM)?/i);
+  if (!m) return null;
+  return { value: parseFloat(m[1]), text: m[0] };
+}
+
+// Recognizes a superset/circuit prefix at the very start of a line — "A1",
+// "A2", "B1" (letter-then-number) or "1a", "1b", "2a" (number-then-letter),
+// each followed by a delimiter (".", ")", ":", or "-") before the exercise
+// name proper, e.g. "A1. Bench Press 4x8" / "1a) Goblet Squat 3x12". Two
+// lines sharing the same prefix group — A1 and A2, or 1a and 1b — are
+// grouped into the same supersetGroup so the app can show them as paired.
+// Requiring a delimiter (rather than just whitespace) after the code is a
+// deliberate tradeoff: it means a bare "A1 Bench Press" with no punctuation
+// isn't caught, but it keeps an exercise that happens to start with a
+// letter+number of its own (there's real gym equipment named like that)
+// from being misread as a superset tag. Returns null (and leaves the line
+// untouched) when no such prefix is present.
+function extractSupersetPrefix(line) {
+  const m = line.match(/^\s*(?:([A-Za-z])(\d{1,2})|(\d{1,2})([A-Za-z]))\s*[.):-]\s*/);
+  if (!m) return null;
+  const group = m[1] ? m[1].toUpperCase() : m[3];
+  return { group, text: m[0] };
+}
+
 // Parses free-typed program text into { [dayTypeKey]: [...] } for the
 // current PROGRAM_DAY_TYPES. A day type's label or key on its own line
 // switches which section following exercise lines fall into (starts in the
@@ -6314,9 +6566,14 @@ function extractRest(line) {
 // "rest 2min", "rest 2:00", "1m30s rest") — time before or after the word
 // — sets that exercise's per-exercise rest timer override (see extractRest)
 // and is likewise stripped from the name; exercises with no "rest" mention
-// keep using the global rest timer default. Note: RIR is
-// not part of this text — it's logged per set during a workout, not
-// planned ahead of time, so there's nothing to parse here for it.
+// keep using the global rest timer default. A leading "A1."/"1a)"-style
+// prefix (see extractSupersetPrefix) sets supersetGroup and is stripped
+// from the name. "@RPE8"/"RPE 8" and "RIR2"/"2RIR" set targetRPE/targetRIR
+// — planned targets for the session, distinct from the RIR logged live per
+// set during a workout (set.rir). "@80%"/"80% of 1RM" sets targetPercent.
+// A line containing "warm-up"/"warmup"/"warm up" is flagged isWarmup so it
+// can be told apart from working sets; it still gets its own sets/reps like
+// any other line.
 function parseProgramText(text) {
   const lines = (text || "").split("\n").map((l) => l.trim()).filter(Boolean);
   const result = {};
@@ -6339,6 +6596,18 @@ function parseProgramText(text) {
 
     let line = raw;
 
+    // Superset/circuit prefix ("A1.", "1a)", ...) has to be pulled off
+    // before anything else touches the line — it only means anything at
+    // the very start, and every other extractor below searches anywhere in
+    // the line, so leaving it until later risks a leftover "A1" fragment
+    // getting swept up into the name instead.
+    let supersetGroup = null;
+    const supersetMatch = extractSupersetPrefix(line);
+    if (supersetMatch) {
+      supersetGroup = supersetMatch.group;
+      line = line.replace(supersetMatch.text, "");
+    }
+
     let unilateral = false;
     const uniMatch = line.match(/[\(\[]?\s*\b(unilateral|uni|single[- ]arm|single[- ]leg|one[- ]arm|one[- ]leg)\b\s*[\)\]]?/i);
     if (uniMatch) {
@@ -6351,6 +6620,14 @@ function parseProgramText(text) {
       // them separated; the later whitespace cleanup on `name` collapses
       // any doubled-up spaces this leaves behind.
       line = line.replace(uniMatch[0], " ");
+    }
+
+    // Same "replace with a space, not nothing" reasoning as unilateral above.
+    let isWarmup = false;
+    const warmupMatch = line.match(/[\(\[]?\s*\b(warm[\s-]?up)\b\s*:?\s*[\)\]]?/i);
+    if (warmupMatch) {
+      isWarmup = true;
+      line = line.replace(warmupMatch[0], " ");
     }
 
     let sets = 2;
@@ -6369,6 +6646,27 @@ function parseProgramText(text) {
       line = line.replace(rest.text, "");
     }
 
+    let targetRPE = null;
+    const rpe = extractRPE(line);
+    if (rpe) {
+      targetRPE = rpe.value;
+      line = line.replace(rpe.text, "");
+    }
+
+    let targetRIR = null;
+    const rirTarget = extractTargetRIR(line);
+    if (rirTarget) {
+      targetRIR = rirTarget.value;
+      line = line.replace(rirTarget.text, "");
+    }
+
+    let targetPercent = null;
+    const percent = extractPercent(line);
+    if (percent) {
+      targetPercent = percent.value;
+      line = line.replace(percent.text, "");
+    }
+
     const name = line
       .replace(/^[-*•\d.\)]+\s*/, "")
       .replace(/\(\s*\)|\[\s*\]/g, " ")
@@ -6378,7 +6676,10 @@ function parseProgramText(text) {
       .trim();
 
     if (!name) continue;
-    result[section].push({ name, sets: Math.max(1, Math.min(10, sets || 2)), unilateral, reps, restSeconds });
+    result[section].push({
+      name, sets: Math.max(1, Math.min(10, sets || 2)), unilateral, reps, restSeconds,
+      supersetGroup, isWarmup, targetRPE, targetRIR, targetPercent,
+    });
   }
   return result;
 }
@@ -6456,7 +6757,7 @@ async function renderProgramOverview(container, navigate) {
 
     <div class="section-title"><h2>Paste Whole Program</h2></div>
     <div class="card">
-      <p class="text-faint" style="margin-top:0;">Type or paste your whole routine at once. Put a day type name (${PROGRAM_DAY_TYPES.map((dt) => `"${escapeHtml(dt.label)}"`).join(" / ")}) on its own line to switch sections — a little decoration around it is fine ("## Upper ##", "Lower Day 1:"). Add sets/reps like "4x10", "3 sets", or "4 sets of 8-12", the word "unilateral" to mark one-side-at-a-time exercises, and "rest 90s" / "90s rest" / "rest 2min" / "rest 2:00" (either order works) to give that exercise its own rest timer instead of using your default.</p>
+      <p class="text-faint" style="margin-top:0;">Type or paste your whole routine at once. Put a day type name (${PROGRAM_DAY_TYPES.map((dt) => `"${escapeHtml(dt.label)}"`).join(" / ")}) on its own line to switch sections — a little decoration around it is fine ("## Upper ##", "Lower Day 1:"). Add sets/reps like "4x10", "3 sets", or "4 sets of 8-12", the word "unilateral" to mark one-side-at-a-time exercises, and "rest 90s" / "90s rest" / "rest 2min" / "rest 2:00" (either order works) to give that exercise its own rest timer instead of using your default. A prefix like "A1." / "A2." or "1a)" / "1b)" groups exercises into a superset. "@RPE8" or "RIR2" sets a target intensity, "@80%" a target load percentage, and the word "warm-up" flags a line as a warm-up set.</p>
       <div class="field" style="margin-bottom:10px;">
         <textarea id="bulk-program-text" rows="9" placeholder="${PROGRAM_DAY_TYPES[0]?.label || "Day 1"}
 Bench Press 4x10 rest 2:30
@@ -6574,9 +6875,28 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
         danger: true,
       });
       if (!ok) return;
+      const all = await storage.getCustomExercises();
+      const snapshot = all.find((e) => e.id === id);
+      const restOverride = cachedSettings?.exerciseRestSeconds?.[id];
       await storage.deleteCustomExercise(id);
       applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
-      toast("Exercise removed");
+      // Undo re-adds the exercise itself (and its rest-timer override, if it
+      // had one) exactly as it was. It re-appends to the end of its day
+      // type's list rather than its old position, though — reconstructing
+      // the exact prior order isn't worth the extra bookkeeping for a
+      // few-second undo window where reordering in between is unlikely.
+      toast("Exercise removed", {
+        undo: async () => {
+          if (!snapshot) return;
+          await storage.addCustomExercise(snapshot);
+          if (restOverride) {
+            cachedSettings.exerciseRestSeconds = { ...(cachedSettings.exerciseRestSeconds || {}), [id]: restOverride };
+            await storage.saveSettings({ exerciseRestSeconds: cachedSettings.exerciseRestSeconds });
+          }
+          applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
+          renderProgramOverview(container, navigate);
+        },
+      });
       renderProgramOverview(container, navigate);
     });
   });
@@ -6658,7 +6978,7 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
           <div style="margin-bottom:6px;">
             <span class="text-dim" style="font-size:12.5px; font-weight:600;">${escapeHtml(dt.label)}</span>
             <ul style="margin:2px 0 0; padding-left:18px; font-size:12.5px; color:var(--c-off-dim);">
-              ${parsed[dt.key].map((ex) => `<li>${escapeHtml(ex.name)} — ${ex.sets} sets${ex.reps ? ` × ${escapeHtml(ex.reps)} reps` : ""}${ex.unilateral ? " (unilateral)" : ""}${ex.restSeconds ? ` · rest ${restTimerTimeLabel(ex.restSeconds)}` : ""}</li>`).join("")}
+              ${parsed[dt.key].map((ex) => `<li>${ex.supersetGroup ? `<span class="text-faint numeric">[${escapeHtml(ex.supersetGroup)}]</span> ` : ""}${escapeHtml(ex.name)} — ${ex.sets} sets${ex.reps ? ` × ${escapeHtml(ex.reps)} reps` : ""}${ex.unilateral ? " (unilateral)" : ""}${ex.restSeconds ? ` · rest ${restTimerTimeLabel(ex.restSeconds)}` : ""}${ex.targetRPE ? ` · RPE ${escapeHtml(ex.targetRPE)}` : ""}${ex.targetRIR ? ` · RIR ${escapeHtml(ex.targetRIR)}` : ""}${ex.targetPercent ? ` · ${ex.targetPercent}%` : ""}${ex.isWarmup ? ` · <span class="text-faint">warm-up</span>` : ""}</li>`).join("")}
             </ul>
           </div>`).join("")}
       </div>`;
@@ -6695,11 +7015,16 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
     // default (getExerciseRestSeconds falls back to it), so only lines
     // that actually specified a rest get an entry in this map.
     const restOverrides = {};
+    const newIds = [];
     for (const dt of PROGRAM_DAY_TYPES) {
       for (const ex of (parsed[dt.key] || [])) {
         const slug = ex.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
         const id = `custom-${slug || "exercise"}-${uid().slice(0, 6)}`;
-        await storage.addCustomExercise({ id, name: ex.name, type: dt.key, sets: ex.sets, unilateral: ex.unilateral, targetReps: ex.reps || null, createdAt: nowISO() });
+        newIds.push(id);
+        await storage.addCustomExercise({
+          id, name: ex.name, type: dt.key, sets: ex.sets, unilateral: ex.unilateral, targetReps: ex.reps || null, createdAt: nowISO(),
+          supersetGroup: ex.supersetGroup || null, isWarmup: !!ex.isWarmup, targetRPE: ex.targetRPE || null, targetRIR: ex.targetRIR || null, targetPercent: ex.targetPercent ?? null,
+        });
         if (ex.restSeconds) restOverrides[id] = ex.restSeconds;
       }
     }
@@ -6707,10 +7032,24 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
     // per-exercise rest overrides (keyed to those now-gone ids) are dead
     // weight — replace the map outright rather than merging into it, even
     // when this paste didn't specify "rest" for anything.
+    const previousRestOverrides = { ...(cachedSettings.exerciseRestSeconds || {}) };
     cachedSettings.exerciseRestSeconds = restOverrides;
     await storage.saveSettings({ exerciseRestSeconds: restOverrides });
     applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
-    toast(`Program updated — ${total} exercises added`);
+    // A bigger, multi-item destructive action than a single delete, so this
+    // gets a longer undo window (5s vs. the usual ~3s default) before it's
+    // treated as final.
+    toast(`Program updated — ${total} exercises added`, {
+      duration: 5000,
+      undo: async () => {
+        for (const id of newIds) await storage.deleteCustomExercise(id);
+        for (const c of existing) await storage.addCustomExercise(c);
+        cachedSettings.exerciseRestSeconds = previousRestOverrides;
+        await storage.saveSettings({ exerciseRestSeconds: previousRestOverrides });
+        applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
+        renderProgramOverview(container, navigate);
+      },
+    });
     renderProgramOverview(container, navigate);
   });
 }
