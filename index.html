@@ -21,11 +21,11 @@
 :root{
   /* --- palette --- */
   --c-black:        #000000;
-  --c-charcoal:      #0b0b0b;
-  --c-panel:         #101010;
-  --c-panel-raised:  #171717;
-  --c-hairline:      rgba(255,255,255,0.12);
-  --c-hairline-strong: rgba(255,255,255,0.26);
+  --c-charcoal:      #1a1a1a;
+  --c-panel:         #0d0d0d;
+  --c-panel-raised:  #141414;
+  --c-hairline:      rgba(255,255,255,0.10);
+  --c-hairline-strong: rgba(255,255,255,0.20);
   --c-blood:         #2c2c2c;
   --c-crimson:       #8f8f8f;
   --c-crimson-bright:#d2d2d2;
@@ -856,6 +856,189 @@ html[data-theme="light"] body::before{ opacity: 0.035; }
 .orm-name{ font-size: var(--fs-xl); font-weight: 500; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .orm-val{ font-family: var(--f-mono); font-size: var(--fs-2xl); font-weight: 700; white-space:nowrap; }
 
+/* ==========================================================================
+   v2 refinements — one clean sans, floating nav, big "today" hero, calmer
+   cards. Appended last on purpose so it layers over everything above.
+   ========================================================================== */
+:root{
+  --f-display: var(--f-body);
+  --f-mono: var(--f-body);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --nav-h: 88px;
+  --header-h: 52px;
+}
+body::before{ display:none; }
+h1,h2,h3,h4{ font-weight:700; letter-spacing:-0.02em; }
+.eyebrow{ text-transform:none; letter-spacing:0; font-size:13px; font-weight:500; color:var(--c-off-faint); }
+.badge{ text-transform:none; letter-spacing:0; font-size:11px; padding:3px 8px; }
+
+/* header: quiet, no rule, status as a dot */
+.app-header{
+  background: rgba(0,0,0,0.72);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border-bottom: none; box-shadow: none;
+  padding-left: 20px; padding-right: 20px;
+}
+html[data-theme="light"] .app-header{ background: rgba(242,242,242,0.78); }
+.brand-name{ font-size:14px; letter-spacing:0.32em; font-weight:800; }
+.brand-mark{ color: var(--c-off); }
+.save-indicator{ text-transform:none; letter-spacing:0; }
+.save-indicator .label{ font-size:0; }
+
+/* floating pill nav */
+.bottom-nav{
+  left:50%; right:auto; transform: translateX(-50%);
+  width: min(calc(100% - 24px), 616px);
+  bottom: calc(12px + var(--safe-b));
+  height: 64px; padding: 6px; gap: 2px;
+  border-radius: 26px;
+  background: rgba(20,20,20,0.78);
+  -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid var(--c-hairline-strong);
+  box-shadow: 0 14px 40px rgba(0,0,0,0.65);
+}
+html[data-theme="light"] .bottom-nav{ background: rgba(250,250,250,0.84); box-shadow: 0 10px 30px rgba(0,0,0,0.16); }
+.nav-btn{ border-radius:20px; min-height:0; padding:0; gap:3px; font-size:10px; letter-spacing:0; }
+.nav-btn::before{ display:none; }
+.bottom-nav .nav-btn .nav-icon{ width:auto; height:auto; background:none; border-radius:0; }
+.nav-btn[aria-current="page"]{ background: var(--c-off); color: var(--c-black); }
+.bottom-nav .nav-btn[aria-current="page"] .nav-icon{ color: var(--c-black); background:none; }
+.nav-btn:focus-visible{ outline-offset:-2px; }
+
+/* rest timer floats above the pill */
+.rest-timer-bar{
+  border-radius: 22px;
+  border-bottom: 1px solid var(--c-hairline-strong);
+  background: rgba(24,24,24,0.92);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+}
+html[data-theme="light"] .rest-timer-bar{ background: rgba(255,255,255,0.92); }
+
+/* cards, sections, controls */
+.card{ border-radius:20px; padding:18px; }
+.stat-card{ background: var(--c-panel); box-shadow:none; border-radius:20px; }
+.sc-icon{ background: var(--c-charcoal); }
+.sc-value{ font-size:30px; font-weight:300; letter-spacing:-0.035em; display:flex; flex-wrap:wrap; align-items:baseline; column-gap:6px; }
+.sc-unit{ font-size:14px; letter-spacing:0; font-weight:400; margin-left:0; }
+.orm-val{ font-weight:600; }
+.section-title{ margin: 34px 0 12px; }
+.section-title h2{ font-size:20px; letter-spacing:-0.025em; text-transform:none; padding-left:0; font-weight:700; }
+.section-title h2::before{ display:none; }
+.btn{ border-radius:14px; letter-spacing:0; }
+.btn-primary{ box-shadow:none; }
+.field input[type="date"]{
+  width:100%; background: var(--c-charcoal); border:1px solid var(--c-hairline-strong);
+  border-radius: var(--radius-md); padding:11px 12px; font-size: var(--fs-xl);
+  color: var(--c-off); min-height:46px; color-scheme: dark;
+}
+html[data-theme="light"] .field input[type="date"]{ color-scheme: light; }
+.toggle-row{ border:none; background: var(--c-charcoal); border-radius:12px; padding:3px; gap:3px; }
+.toggle-row button{ background:transparent; border-radius:9px; }
+.toggle-row button.active{ background: var(--c-off); color: var(--c-black); }
+.chip-btn{ border-color: transparent; background: var(--c-charcoal); padding:8px 14px; font-weight:500; }
+.chip-wrap{ display:flex; flex-wrap:wrap; gap:8px; }
+.chip-btn.skip-chip.active, .rir-chip.active{ background: var(--c-off); border-color: var(--c-off); color: var(--c-black); }
+.resume-banner{ background: var(--c-off); border-color: var(--c-off); color: var(--c-black); border-radius:22px; padding:20px; }
+.resume-banner h3{ color: var(--c-black); font-size:20px; }
+.resume-banner p{ color: rgba(0,0,0,0.6); font-size:14px; }
+.resume-banner .btn-primary{ background: var(--c-black); border-color: var(--c-black); color: var(--c-off); min-height:54px; font-size:16px; }
+
+/* Home: the "today" hero */
+.hero-card{ background:none; border:none; border-radius:0; padding:14px 0 4px; overflow:visible; }
+.hero-card::after{ display:none; }
+.hero-eyebrow{ text-transform:none; letter-spacing:0; font-size:14px; font-weight:500; color: var(--c-off-faint); }
+.hero-title{ font-size: clamp(48px, 16vw, 72px); font-weight:300; letter-spacing:-0.05em; line-height:1; margin-top:10px; }
+.hero-sub{ font-size:15px; margin-top:14px; }
+.hero-actions{ margin-top:24px; }
+.hero-actions .btn{ width:auto; min-height:58px; font-size:17px; border-radius:18px; }
+.hero-actions .btn-primary{ flex:2; }
+.hero-actions .btn-ghost{ flex:1; }
+
+.week-strip{ display:grid; grid-template-columns: repeat(7, 1fr); gap:4px; margin-top:30px; }
+.wk-day{
+  appearance:none; background:none; border:none; padding:6px 0;
+  display:flex; flex-direction:column; align-items:center; gap:8px;
+  color: var(--c-off-faint); font-size:12px; font-weight:500; border-radius:14px;
+  -webkit-tap-highlight-color: transparent;
+}
+.wk-day:disabled{ opacity:0.45; cursor:default; }
+.wk-day:not(:disabled):active{ background: var(--c-press); }
+.wk-dot{
+  width:32px; height:32px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:700; color: var(--c-off-dim);
+  border:1.5px solid transparent;
+}
+.wk-day[data-state="done"] .wk-dot{ background: var(--c-off); color: var(--c-black); }
+.wk-day[data-state="planned"] .wk-dot{ border-color: var(--c-hairline-strong); }
+.wk-day[data-state="missed"] .wk-dot{ border:1.5px dashed var(--c-off-faint); color: var(--c-off-faint); }
+.wk-day[data-state="skipped"] .wk-dot{ background: var(--c-charcoal); color: var(--c-off-dim); border-color: var(--c-hairline-strong); font-size:16px; }
+.wk-day[data-state="rest"] .wk-dot::after{ content:""; width:4px; height:4px; border-radius:50%; background: var(--c-hairline-strong); }
+.wk-day.today{ color: var(--c-off); }
+.wk-day.today .wk-dot{ box-shadow: 0 0 0 2px var(--c-black), 0 0 0 3.5px var(--c-off); }
+.wk-caption{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:10px; font-size:13px; color: var(--c-off-faint); }
+.wk-caption .link-btn{ font-size:13px; flex-shrink:0; }
+
+.kpi-row{ display:grid; grid-template-columns: repeat(4, 1fr); margin: 26px 0 8px; border-top:1px solid var(--c-hairline); border-bottom:1px solid var(--c-hairline); }
+.kpi{ padding:16px 0 14px 14px; border-left:1px solid var(--c-hairline); min-width:0; }
+.kpi:first-child{ border-left:none; padding-left:0; }
+.kpi-value{ font-size:26px; font-weight:300; letter-spacing:-0.03em; line-height:1.05; }
+.kpi-label{ font-size:12px; color: var(--c-off-faint); margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.skip-list{ display:flex; flex-direction:column; }
+.skip-row{
+  width:100%; display:flex; align-items:center; gap:12px; text-align:left;
+  background:none; border:none; border-top:1px solid var(--c-hairline);
+  padding:11px 0; color: var(--c-off); font-size:14px;
+}
+.skip-row:first-child{ border-top:none; }
+.skip-date{ font-weight:600; min-width:96px; }
+.skip-reason{ flex:1; min-width:0; color: var(--c-off-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* Workout logging: bigger targets, pinned progress, calmer chrome */
+.workout-header{ margin-bottom:4px; }
+.workout-progress-bar{
+  position: sticky; top: calc(var(--header-h) + var(--safe-t)); z-index:30;
+  height:4px; border:none; border-radius:2px; background: var(--c-hairline-strong);
+  margin: 14px 0 12px; box-shadow: 0 9px 0 var(--c-black), 0 -9px 0 var(--c-black);
+}
+.workout-progress-fill{ background: var(--c-off); }
+.exercise-card .ex-name{ font-size:18px; font-weight:700; letter-spacing:-0.02em; }
+.exercise-card .ex-sub{ font-size:12.5px; }
+.exercise-card .ex-prev{ background:none; padding:0; margin:12px 0 8px; display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; font-family: var(--f-body); }
+.ex-prev-label{ font-size:12px; color: var(--c-off-faint); }
+.prev-chips{ display:flex; flex-wrap:wrap; gap:6px; }
+.prev-chip{ background: var(--c-charcoal); border-radius:999px; padding:4px 10px; font-size:12.5px; font-weight:500; color: var(--c-off-dim); white-space:nowrap; }
+.set-row{ gap:10px; padding:10px 0; }
+.set-index{ width:28px; height:28px; border:none; background: var(--c-charcoal); font-size:13px; font-weight:600; }
+.set-inputs input{
+  min-height:50px; border-radius:12px; font-size:19px; font-weight:600;
+  background: var(--c-charcoal); border-color: transparent;
+}
+.set-inputs input:focus{ outline:none; border-color: var(--c-off); }
+.set-complete-btn{
+  width:50px; height:50px; font-size:22px; font-weight:700;
+  background: var(--c-charcoal); border-color: transparent;
+  transition: background-color .15s ease, color .15s ease;
+}
+.set-row.completed .set-index{ background: var(--c-off); border-color: var(--c-off); color: var(--c-black); }
+.set-row.completed .set-complete-btn{ background: var(--c-off); border-color: var(--c-off); color: var(--c-black); }
+.set-row.completed .set-inputs input{ color: var(--c-off-dim); }
+.set-complete-btn.pop{ animation: set-pop .34s cubic-bezier(.3,1.7,.5,1); }
+@keyframes set-pop{ 0%{ transform: scale(.78); } 100%{ transform: scale(1); } }
+@keyframes route-in{ from{ opacity:0; transform: translateY(4px);} to{ opacity:1; transform: translateY(0);} }
+
+.rir-label{ text-transform:none; letter-spacing:0; font-size:12px; }
+
+/* History calendar */
+.cal-cell{ border-radius:10px; border-color: transparent; background: var(--c-panel); }
+.cal-cell.cal-done{ background: var(--c-off); border-color: var(--c-off); color: var(--c-black); }
+.cal-cell.cal-partial{ background: transparent; border:1.5px solid var(--c-off); color: var(--c-off); }
+.cal-cell.cal-skipped{ background: transparent; border:1.5px dashed var(--c-off-faint); color: var(--c-off-dim); }
+.cal-cell[data-skip-date]{ cursor:pointer; }
+
 @media (prefers-reduced-motion: reduce){
   *{ animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
@@ -883,7 +1066,7 @@ html[data-theme="light"] body::before{ opacity: 0.035; }
 
 <nav class="bottom-nav" aria-label="Primary">
   <button class="nav-btn" data-route="dashboard" aria-current="page">
-    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="12" width="8" height="9" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/></svg></span><span>Dashboard</span>
+    <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="12" width="8" height="9" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/></svg></span><span>Home</span>
   </button>
   <button class="nav-btn" data-route="workout">
     <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h1M19 12h1"/><rect x="5" y="9" width="2.4" height="6" rx="0.8"/><rect x="16.6" y="9" width="2.4" height="6" rx="0.8"/><rect x="2" y="10.2" width="1.6" height="3.6" rx="0.6"/><rect x="20.4" y="10.2" width="1.6" height="3.6" rx="0.6"/><path d="M7.4 12h9.2"/></svg></span><span>Workout</span>
@@ -1966,6 +2149,7 @@ const KV_EXERCISE_ORDER = "exerciseOrder";
 const KV_SCHEDULE_OVERRIDES = "scheduleOverrides";
 const KV_BODYWEIGHT_LOG = "bodyweightLog";
 const KV_STEP_LOG = "stepLog";
+const KV_SKIP_LOG = "skipLog";
 const ACTIVE_ID = "active";
 
 const DEFAULT_SETTINGS = {
@@ -2464,6 +2648,38 @@ async function deleteStepLog(id) {
 }
 
 // ---------------------------------------------------------------------------
+// Skipped-day log — one entry per calendar date for a day you didn't train.
+// { id, date: "YYYY-MM-DD", reason, note }. Logging a date again replaces it.
+// ---------------------------------------------------------------------------
+async function getSkipLogs() {
+  const rec = await db.get(STORES.KV, KV_SKIP_LOG);
+  return (rec?.list || []).slice().sort((a, b) => a.date.localeCompare(b.date));
+}
+
+async function logSkip(dateStr, reason, note) {
+  return saving(async () => {
+    const rec = await db.get(STORES.KV, KV_SKIP_LOG);
+    const list = (rec?.list || []).slice();
+    const idx = list.findIndex((e) => e.date === dateStr);
+    const entry = { id: idx !== -1 ? list[idx].id : uid(), date: dateStr, reason: reason || "", note: note || "" };
+    if (idx !== -1) list[idx] = entry;
+    else list.push(entry);
+    list.sort((a, b) => a.date.localeCompare(b.date));
+    await db.put(STORES.KV, { key: KV_SKIP_LOG, list });
+    return list;
+  });
+}
+
+async function deleteSkipLog(id) {
+  return saving(async () => {
+    const rec = await db.get(STORES.KV, KV_SKIP_LOG);
+    const list = (rec?.list || []).filter((e) => e.id !== id);
+    await db.put(STORES.KV, { key: KV_SKIP_LOG, list });
+    return list;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Export / Import / Reset
 // ---------------------------------------------------------------------------
 
@@ -2474,6 +2690,7 @@ async function exportAllData() {
     programHistory,
     bodyweightLogs,
     stepLogs,
+    skipLogs,
   ] = await Promise.all([
     getWorkouts(),
     getActiveWorkout(),
@@ -2487,6 +2704,7 @@ async function exportAllData() {
     getProgramHistory(),
     getBodyweightLogs(),
     getStepLogs(),
+    getSkipLogs(),
   ]);
 
   return {
@@ -2503,6 +2721,7 @@ async function exportAllData() {
     programHistory,
     bodyweightLogs,
     stepLogs,
+    skipLogs,
     exerciseDefinitions: allExerciseDefs(),
   };
 }
@@ -2577,6 +2796,8 @@ async function importAllData(raw) {
 
     await db.put(STORES.KV, { key: KV_STEP_LOG, list: Array.isArray(data.stepLogs) ? data.stepLogs : [] });
 
+    await db.put(STORES.KV, { key: KV_SKIP_LOG, list: Array.isArray(data.skipLogs) ? data.skipLogs : [] });
+
     await db.put(STORES.KV, { key: KV_META, schemaVersion: SCHEMA_VERSION, lastBackupAt: (await getMeta()).lastBackupAt });
 
     return { ok: true };
@@ -2596,6 +2817,7 @@ async function resetAllData() {
     await db.put(STORES.KV, { key: KV_SCHEDULE_OVERRIDES, data: {} });
     await db.put(STORES.KV, { key: KV_BODYWEIGHT_LOG, list: [] });
     await db.put(STORES.KV, { key: KV_STEP_LOG, list: [] });
+    await db.put(STORES.KV, { key: KV_SKIP_LOG, list: [] });
     await db.put(STORES.KV, { key: KV_META, schemaVersion: SCHEMA_VERSION, lastBackupAt: null });
   });
 }
@@ -2612,6 +2834,7 @@ const storage = {
   getScheduleOverrides, setScheduleOverride,
   getBodyweightLogs, logBodyweight, deleteBodyweightLog,
   getStepLogs, logSteps, deleteStepLog,
+  getSkipLogs, logSkip, deleteSkipLog,
   exportAllData, markBackupComplete, importAllData, resetAllData,
 };
 function applyTheme(theme) {
@@ -3226,7 +3449,7 @@ function initSaveIndicator(onSaveStateChange) {
 function qs(sel, root = document) { return root.querySelector(sel); }
 function qsa(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
 async function dashboardRender(container, navigate) {
-  const [active, workouts, programState, settingsData, scheduleOverrides, programHistory, bwLogs, stepLogs] = await Promise.all([
+  const [active, workouts, programState, settingsData, scheduleOverrides, programHistory, bwLogs, stepLogs, skipLogs] = await Promise.all([
     storage.getActiveWorkout(),
     storage.getWorkouts(),
     storage.getProgramState(),
@@ -3235,6 +3458,7 @@ async function dashboardRender(container, navigate) {
     storage.getProgramHistory(),
     storage.getBodyweightLogs(),
     storage.getStepLogs(),
+    storage.getSkipLogs(),
   ]);
 
   if (!programState.setupComplete) {
@@ -3263,43 +3487,56 @@ async function dashboardRender(container, navigate) {
 
   let html = "";
 
+  const todayLabel = new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+
   if (active) {
     const { completed, programmed } = countCompletedSets(active);
     html += `
       <div class="resume-banner">
-        <h3>Resume Workout</h3>
+        <h3>Workout in progress</h3>
         <p>${PROGRAM[active.type]?.label || active.type} · started ${formatTime(active.startedAt)} · ${completed}/${programmed} sets logged</p>
-        <button class="btn btn-primary" data-act="resume">Resume</button>
+        <button class="btn btn-primary" data-act="resume">Resume workout</button>
       </div>`;
   } else if (!suggested || suggested === "R") {
     html += `
       <div class="hero-card">
-        <div class="hero-eyebrow">Today's Session</div>
-        <div class="hero-title">${suggested === "R" ? "Rest Day" : "No Pattern Set"}</div>
-        <div class="hero-sub">${suggested === "R" ? "Scheduled rest — recovery is part of the program. You can still start any workout manually." : "Set a training pattern in the Schedule tab to get daily suggestions."}</div>
+        <div class="hero-eyebrow">${escapeHtml(todayLabel)}</div>
+        <div class="hero-title">${suggested === "R" ? "Rest day" : "No plan yet"}</div>
+        <div class="hero-sub">${suggested === "R" ? "Recovery is part of the program. You can still train if you want to." : "Set a training pattern in the Schedule tab to get a daily suggestion."}</div>
         <div class="hero-actions">
-          <button class="btn btn-ghost" data-act="pick-workout">Choose a Workout</button>
+          <button class="btn btn-ghost" data-act="pick-workout">Choose a workout</button>
         </div>
       </div>`;
   } else {
+    const label = PROGRAM[suggested]?.label || suggested;
+    const lastSame = workouts.find((w) => w.type === suggested && (w.status === "completed" || w.status === "partial"));
+    let lastText = "not done yet";
+    if (lastSame) {
+      const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+      const t1 = new Date(lastSame.startedAt); t1.setHours(0, 0, 0, 0);
+      const n = Math.round((t0 - t1) / 86400000);
+      lastText = "last done " + (n <= 0 ? "today" : n === 1 ? "yesterday" : n + " days ago");
+    }
     html += `
       <div class="hero-card">
-        <div class="hero-eyebrow">Today's Session</div>
-        <div class="hero-title">${PROGRAM[suggested]?.label || suggested}</div>
-        <div class="hero-sub">Suggested by today's training pattern. You can start any workout manually at any time.</div>
+        <div class="hero-eyebrow">${escapeHtml(todayLabel)}</div>
+        <div class="hero-title">${escapeHtml(label)}</div>
+        <div class="hero-sub">${programTotalSets(suggested)} sets · ${lastText}</div>
         <div class="hero-actions">
-          <button class="btn btn-primary" data-act="start-suggested" data-type="${suggested}">Start ${PROGRAM[suggested]?.label || suggested}</button>
+          <button class="btn btn-primary" data-act="start-suggested" data-type="${suggested}">Start ${escapeHtml(label)}</button>
           <button class="btn btn-ghost" data-act="pick-workout">Choose</button>
         </div>
       </div>`;
   }
 
+  html += weekStripHtml(workouts, programHistory, scheduleOverrides, skipLogs);
+
   html += `
-    <div class="stat-grid">
-      <div class="stat-box"><div class="stat-value">${loggedWorkouts.length}</div><div class="stat-label">Total workouts</div></div>
-      <div class="stat-box"><div class="stat-value">${streak}</div><div class="stat-label">Day streak</div></div>
-      <div class="stat-box"><div class="stat-value">${roundTo(displayWeight(totalVolume, dashboardVolumeUnit), 0) ?? 0}</div><div class="stat-label">Total volume (${dashboardVolumeUnit})</div></div>
-      <div class="stat-box"><div class="stat-value">${totalCardioSessions}</div><div class="stat-label">Cardio sessions</div></div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-value">${loggedWorkouts.length}</div><div class="kpi-label">Workouts</div></div>
+      <div class="kpi"><div class="kpi-value">${streak}</div><div class="kpi-label">Day streak</div></div>
+      <div class="kpi"><div class="kpi-value">${compactNumber(displayWeight(totalVolume, dashboardVolumeUnit) || 0)}</div><div class="kpi-label">Volume (${dashboardVolumeUnit})</div></div>
+      <div class="kpi"><div class="kpi-value">${totalCardioSessions}</div><div class="kpi-label">Cardio</div></div>
     </div>
   `;
 
@@ -3308,6 +3545,7 @@ async function dashboardRender(container, navigate) {
   html += `<div class="section-title"><h2>Stats</h2></div><div class="stats-grid">`;
   html += stepsCardHtml(stepLogs, settingsData);
   html += workoutSplitCardHtml(workouts);
+  html += skippedCardHtml(skipLogs, workouts);
   html += oneRepMaxCardHtml(workouts, settingsData);
 
   const periodLabel = { weekly: "week", monthly: "month", yearly: "year" }[dashboardPeriodRange];
@@ -3431,6 +3669,10 @@ async function dashboardRender(container, navigate) {
   qs("#dash-bw-log-btn", container)?.addEventListener("click", () => openLogBodyweightModal(container, navigate));
   qs("#dash-bw-history-btn", container)?.addEventListener("click", () => openBodyweightHistoryModal(container, navigate));
   qs("#dash-steps-log-btn", container)?.addEventListener("click", () => openLogStepsModal(container, navigate));
+  const refreshDash = () => dashboardRender(container, navigate);
+  qsa('[data-act="log-skip"]', container).forEach((el) => el.addEventListener("click", () => openSkipDayModal(todayDateStr(), container, navigate, refreshDash)));
+  qsa("[data-skip-date]", container).forEach((el) => el.addEventListener("click", () => openSkipDayModal(el.dataset.skipDate, container, navigate, refreshDash)));
+  qsa(".wk-day[data-workout-id]", container).forEach((el) => el.addEventListener("click", () => navigate("history-detail", { workoutId: el.dataset.workoutId })));
   qs("#dash-orm-toggle", container)?.addEventListener("click", () => {
     dashboardShowAll1RM = !dashboardShowAll1RM;
     dashboardRender(container, navigate);
@@ -3440,6 +3682,204 @@ async function dashboardRender(container, navigate) {
 const dashboard = { render: dashboardRender };
 
 let dashboardShowAll1RM = false; // 1 Rep Maxes card: top 5 vs every lift
+
+const SKIP_REASONS = ["Sick", "Busy", "Tired", "Sore", "Travel", "Other"];
+
+function compactNumber(n) {
+  const v = Math.abs(n);
+  if (v >= 1e6) return (n / 1e6).toFixed(v >= 1e7 ? 0 : 1).replace(/\.0$/, "") + "M";
+  if (v >= 1e4) return Math.round(n / 1e3) + "k";
+  return String(Math.round(n));
+}
+
+// "Mon, Oct 4" from a YYYY-MM-DD string, in local time (no UTC day-shift).
+function formatLocalDate(dateStr) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
+// Monday-to-Sunday strip for the current week. Each day is one of:
+// done (trained), skipped (logged as skipped), missed (planned, past, nothing
+// logged), planned (still to come / today), rest (nothing scheduled).
+function weekStripHtml(workouts, programHistory, scheduleOverrides, skipLogs) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayKey = dateKey(today);
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+
+  const doneByDate = new Map();
+  for (const w of workouts) {
+    if (w.status === "abandoned") continue;
+    const k = dateKey(new Date(w.startedAt));
+    if (!doneByDate.has(k)) doneByDate.set(k, w);
+  }
+  const skipByDate = new Map(skipLogs.map((e) => [e.date, e]));
+  const letters = ["M", "T", "W", "T", "F", "S", "S"];
+
+  let trained = 0, planned = 0, skipped = 0, cells = "";
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const k = dateKey(d);
+    const w = doneByDate.get(k);
+    const skip = skipByDate.get(k);
+    const type = effectiveDayTypeForDateV(d, programHistory, scheduleOverrides);
+    const isPlanned = !!type && type !== "R";
+    const isFuture = k > todayKey;
+    const isPast = k < todayKey;
+    if (isPlanned) planned++;
+
+    let state = "rest", mark = "", attrs = "", status = "rest day";
+    if (w) { state = "done"; mark = "✓"; trained++; status = "trained"; attrs = `data-workout-id="${w.id}"`; }
+    else if (skip) { state = "skipped"; mark = "×"; skipped++; status = "skipped" + (skip.reason ? ", " + skip.reason : ""); attrs = `data-skip-date="${k}"`; }
+    else if (isPlanned) {
+      state = isPast ? "missed" : "planned";
+      mark = (PROGRAM[type]?.label || String(type)).charAt(0).toUpperCase();
+      status = isPast ? "planned, nothing logged" : "planned";
+      if (!isFuture) attrs = `data-skip-date="${k}"`;
+    } else if (!isFuture) attrs = `data-skip-date="${k}"`;
+    if (isFuture) attrs = "disabled";
+
+    const when = d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+    cells += `<button type="button" class="wk-day${k === todayKey ? " today" : ""}" data-state="${state}" ${attrs} aria-label="${escapeHtml(when)}, ${escapeHtml(status)}">
+      <span class="wk-letter">${letters[i]}</span><span class="wk-dot">${mark}</span>
+    </button>`;
+  }
+
+  const total = Math.max(planned, trained);
+  const caption = total
+    ? `${trained} of ${total} session${total === 1 ? "" : "s"} this week${skipped ? ` · ${skipped} skipped` : ""}`
+    : `${trained} session${trained === 1 ? "" : "s"} this week${skipped ? ` · ${skipped} skipped` : ""}`;
+
+  return `
+    <div class="week-strip">${cells}</div>
+    <div class="wk-caption"><span>${caption}</span><button class="link-btn" type="button" data-act="log-skip">Log skipped day</button></div>`;
+}
+
+// Last 30 days: how many days you trained vs skipped, with the latest skips
+// listed so they can be edited. Tap a row (or a day in the week strip /
+// History calendar) to change or remove it.
+function skippedCardHtml(skipLogs, workouts) {
+  const cutoff = new Date();
+  cutoff.setHours(0, 0, 0, 0);
+  cutoff.setDate(cutoff.getDate() - 29);
+  const ck = dateKey(cutoff);
+
+  const recent = skipLogs.filter((e) => e.date >= ck);
+  const trainedDays = new Set(
+    workouts.filter((w) => w.status !== "abandoned").map((w) => dateKey(new Date(w.startedAt))).filter((k) => k >= ck)
+  ).size;
+
+  const counts = {};
+  recent.forEach((e) => { if (e.reason) counts[e.reason] = (counts[e.reason] || 0) + 1; });
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+
+  const list = skipLogs.slice().reverse().slice(0, 4);
+  const rows = list.length
+    ? `<div class="skip-list">${list.map((e) => `
+        <button type="button" class="skip-row" data-skip-date="${e.date}">
+          <span class="skip-date">${escapeHtml(formatLocalDate(e.date))}</span>
+          <span class="skip-reason">${escapeHtml(e.reason || "No reason")}${e.note ? " · " + escapeHtml(e.note) : ""}</span>
+          <span class="h-chevron">›</span>
+        </button>`).join("")}</div>`
+    : `<div class="sc-caption">Missed a session? Log it here to keep an honest record.</div>`;
+
+  return `
+    <div class="stat-card span-2">
+      <div class="sc-head"><span class="sc-icon">${ICONS.skip}</span><span class="sc-title">Skipped Days</span></div>
+      <div class="sc-value">${recent.length}<span class="sc-unit">skipped</span></div>
+      <div class="sc-caption" style="margin-bottom:${list.length ? 8 : 0}px;">${trainedDays} trained · ${recent.length} skipped in the last 30 days${top ? ` · mostly ${escapeHtml(top[0].toLowerCase())}` : ""}</div>
+      ${rows}
+      <div style="margin-top:12px;"><button class="btn btn-sm" type="button" data-act="log-skip" style="width:100%;">+ Log skipped day</button></div>
+    </div>`;
+}
+
+// Log, edit or remove a skipped day. onDone re-renders whichever screen opened it.
+async function openSkipDayModal(initialDate, container, navigate, onDone) {
+  let logs = await storage.getSkipLogs();
+  const workouts = await storage.getWorkouts();
+  const trainedDates = new Set(workouts.filter((w) => w.status !== "abandoned").map((w) => dateKey(new Date(w.startedAt))));
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  modalRoot.appendChild(overlay);
+  const close = () => overlay.remove();
+
+  let date = initialDate || todayDateStr();
+  let reason = "";
+  let note = "";
+  const sync = () => {
+    const ex = logs.find((e) => e.date === date);
+    reason = ex?.reason || "";
+    note = ex?.note || "";
+  };
+  sync();
+
+  const render = () => {
+    const ex = logs.find((e) => e.date === date);
+    overlay.innerHTML = `
+      <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="skip-modal-title">
+        <h3 id="skip-modal-title">${ex ? "Edit skipped day" : "Log skipped day"}</h3>
+        <p class="text-faint" style="margin-top:0;">Mark a day you didn't train so your record stays honest.</p>
+        <div class="field">
+          <label for="skip-date">Date</label>
+          <input type="date" id="skip-date" value="${date}" max="${todayDateStr()}">
+        </div>
+        <div class="field">
+          <label>Reason</label>
+          <div class="chip-wrap">${SKIP_REASONS.map((r) => `<button type="button" class="chip-btn skip-chip ${reason === r ? "active" : ""}" data-reason="${r}">${r}</button>`).join("")}</div>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="skip-note">Note (optional)</label>
+          <input type="text" id="skip-note" maxlength="80" value="${escapeHtml(note)}" placeholder="e.g. Knee felt off">
+        </div>
+        <div class="btn-row" style="margin-top:18px;">
+          ${ex ? `<button class="btn btn-danger" data-act="remove" type="button">Remove</button>` : `<button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button>`}
+          <button class="btn btn-primary" data-act="save" type="button">Save</button>
+        </div>
+      </div>`;
+
+    qs("#skip-date", overlay).addEventListener("change", (e) => {
+      if (!e.target.value) return;
+      date = e.target.value;
+      sync();
+      render();
+    });
+    qs("#skip-note", overlay).addEventListener("input", (e) => { note = e.target.value; });
+    qsa(".skip-chip", overlay).forEach((chip) => chip.addEventListener("click", () => {
+      reason = reason === chip.dataset.reason ? "" : chip.dataset.reason;
+      render();
+    }));
+    qs('[data-act="cancel"]', overlay)?.addEventListener("click", close);
+    qs('[data-act="remove"]', overlay)?.addEventListener("click", async () => {
+      try {
+        await storage.deleteSkipLog(ex.id);
+      } catch (err) {
+        toast("Couldn't remove — check your connection");
+        return;
+      }
+      close();
+      toast("Skipped day removed");
+      onDone?.();
+    });
+    qs('[data-act="save"]', overlay).addEventListener("click", async () => {
+      if (!date) { toast("Pick a date"); return; }
+      if (trainedDates.has(date)) { toast("You already logged a workout on that day"); return; }
+      try {
+        await storage.logSkip(date, reason, note.trim());
+      } catch (err) {
+        toast("Couldn't save — check your connection");
+        return;
+      }
+      close();
+      toast("Skipped day logged");
+      onDone?.();
+    });
+  };
+
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  render();
+}
 
 // Small line icons for the stat-card headers.
 function svgIcon(paths) {
@@ -3451,6 +3891,7 @@ const ICONS = {
   trophy: svgIcon(`<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>`),
   scale: svgIcon(`<path d="M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M8.5 9a4.5 4 0 0 1 7 0"/><path d="M12 9l1.5-2"/>`),
   bars: svgIcon(`<path d="M5 20V11M12 20V5M19 20v-7"/>`),
+  skip: svgIcon(`<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>`),
 };
 
 // Average steps over the last 30 logged-in days, how often the goal was hit,
@@ -4061,8 +4502,8 @@ function paintActiveWorkout(container, workout, navigate) {
   let html = `
     <div class="workout-header">
       <div>
-        <div class="eyebrow">${def.label} · in progress</div>
-        <h1 style="font-size:22px;">${def.label} Workout</h1>
+        <div class="eyebrow">In progress</div>
+        <h1 style="font-size:28px; letter-spacing:-0.035em;">${def.label} workout</h1>
       </div>
       <button class="btn btn-sm btn-ghost" data-act="finish">End Workout</button>
     </div>
@@ -4115,7 +4556,7 @@ function renderExerciseCard(entry, workout) {
         </div>
         <button type="button" class="icon-btn" data-act="open-ex-options" data-exercise="${entry.exerciseId}" aria-label="Exercise options (unit, rest timer, plates, substitute)" style="flex-shrink:0;">⋯</button>
       </div>
-      ${prevLines ? `<div class="ex-prev">LAST TIME<br>${prevLines.map(escapeHtml).join("<br>")}</div>` : `<div class="ex-prev text-faint">No previous data yet</div>`}
+      ${prevLines ? `<div class="ex-prev"><span class="ex-prev-label">Last time</span><div class="prev-chips">${prevLines.map((l) => `<span class="prev-chip">${escapeHtml(l)}</span>`).join("")}</div></div>` : `<div class="ex-prev text-faint">No previous data yet</div>`}
       <div class="sets-list">${setsHtml}</div>
       <div class="quick-row">
         ${prev ? `<button class="chip-btn" data-act="use-prev-weight" data-exercise="${entry.exerciseId}">Use Previous Weight</button>` : ""}
@@ -4217,7 +4658,7 @@ function renderCardioCard(phase, workout, title) {
   return `
     <div class="card cardio-card" data-cardio="${phase}">
       <div class="flex-between">
-        <div class="eyebrow">${title.toUpperCase()}</div>
+        <div class="eyebrow" style="font-size:14px; font-weight:600; color:var(--c-off);">${title}</div>
         ${statusBadge}
       </div>
       <div class="btn-row" style="margin-top:12px;">
@@ -4276,6 +4717,10 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
       updateRirRowUI(container, exercise, Number(set), s);
     });
   });
+  // Tapping a weight/reps box selects its contents so a new number just replaces it.
+  qsa(".set-inputs input", container).forEach((inp) => {
+    inp.addEventListener("focus", () => setTimeout(() => { try { inp.select(); } catch (_) {} }, 0));
+  });
   // Toggle set completion
   qsa('[data-act="toggle-complete"]', container).forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -4298,6 +4743,10 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
       updateSetRowUI(container, entry.exerciseId, Number(set), s);
       queueActiveWorkoutSave(workout);
       updateProgressUI(container, workout);
+      if (!wasCompleted && s.completed) {
+        btn.classList.add("pop");
+        setTimeout(() => btn.classList.remove("pop"), 360);
+      }
     });
     // long-press-free alt: allow marking skipped via a second control (double click / right side) —
     // implemented as a small affordance: clicking the set index cycles through skip state.
@@ -5000,7 +5449,7 @@ const workout = { renderWorkoutHome, startNewWorkout, renderActiveWorkout, rende
 let historyViewMode = "list";
 let historyCalendarCursor = null;
 
-function renderHistoryCalendarHtml(workouts) {
+function renderHistoryCalendarHtml(workouts, skipLogs = []) {
   if (!historyCalendarCursor) {
     const d = new Date();
     historyCalendarCursor = { year: d.getFullYear(), month: d.getMonth() };
@@ -5014,6 +5463,9 @@ function renderHistoryCalendarHtml(workouts) {
     byDate.set(key, w);
   }
 
+  const skipByDate = new Map(skipLogs.map((e) => [e.date, e]));
+  const todayKeyCal = todayDateStr();
+
   const first = new Date(cursor.year, cursor.month, 1);
   const startWeekday = first.getDay();
   const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate();
@@ -5024,9 +5476,11 @@ function renderHistoryCalendarHtml(workouts) {
   for (let day = 1; day <= daysInMonth; day++) {
     const key = `${cursor.year}-${String(cursor.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const w = byDate.get(key);
-    const label = w ? (w.type || "") : "";
-    const cls = w ? (w.status === "completed" ? "cal-done" : "cal-partial") : "";
-    cells += `<div class="cal-cell ${cls}" ${w ? `data-id="${w.id}" style="cursor:pointer;"` : ""}>
+    const skip = w ? null : skipByDate.get(key);
+    const label = w ? (w.type || "") : skip ? "×" : "";
+    const cls = w ? (w.status === "completed" ? "cal-done" : "cal-partial") : skip ? "cal-skipped" : "";
+    const canLog = !w && key <= todayKeyCal;
+    cells += `<div class="cal-cell ${cls}" ${w ? `data-id="${w.id}" style="cursor:pointer;"` : canLog ? `data-skip-date="${key}"` : ""}>
       <span class="cal-daynum">${day}</span>${label ? `<span class="cal-tag">${label}</span>` : ""}
     </div>`;
   }
@@ -5039,7 +5493,7 @@ function renderHistoryCalendarHtml(workouts) {
     </div>
     <div class="cal-weekdays">${["S", "M", "T", "W", "T", "F", "S"].map((d) => `<span>${d}</span>`).join("")}</div>
     <div class="cal-grid">${cells}</div>
-    <p class="text-faint" style="margin-top:14px;">Solid = completed, outlined = partial.</p>
+    <p class="text-faint" style="margin-top:14px;">Solid = completed, outlined = partial, × = skipped. Tap an empty day to log a skip.</p>
   `;
 }
 
@@ -5058,7 +5512,8 @@ async function historyRenderList(container, navigate) {
     </div>`;
 
   if (historyViewMode === "calendar") {
-    container.innerHTML = toggleHtml + renderHistoryCalendarHtml(workouts);
+    const skipLogs = await storage.getSkipLogs();
+    container.innerHTML = toggleHtml + renderHistoryCalendarHtml(workouts, skipLogs);
     wireHistoryViewToggle(container, navigate);
     qs('[data-act="cal-prev"]', container)?.addEventListener("click", () => {
       historyCalendarCursor.month -= 1;
@@ -5072,6 +5527,9 @@ async function historyRenderList(container, navigate) {
     });
     qsa(".cal-cell[data-id]", container).forEach((el) => {
       el.addEventListener("click", () => navigate("history-detail", { workoutId: el.dataset.id }));
+    });
+    qsa(".cal-cell[data-skip-date]", container).forEach((el) => {
+      el.addEventListener("click", () => openSkipDayModal(el.dataset.skipDate, container, navigate, () => historyRenderList(container, navigate)));
     });
     return;
   }
@@ -5333,7 +5791,7 @@ function renderHistCardio(phase, workout, title, settings, editMode) {
     if (c.status !== "completed" && c.status !== "skipped") return "";
     return `
       <div class="card">
-        <div class="eyebrow">${title.toUpperCase()}</div>
+        <div class="eyebrow" style="font-size:14px; font-weight:600; color:var(--c-off);">${title}</div>
         <div class="text-dim" style="margin-top:6px;">${c.status === "completed" ? "✓ Done" : "Skipped"}</div>
       </div>`;
   }
@@ -5650,20 +6108,20 @@ function estimate1RM(weight, reps) {
 }
 
 function sparkline(values) {
-  const max = Math.max(...values, 1);
-  const min = Math.min(...values, 0);
-  const range = max - min || 1;
-  const w = 300, h = 100, pad = 8;
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const range = max - min;
+  const w = 300, h = 100, pad = 10;
   const step = values.length > 1 ? (w - pad * 2) / (values.length - 1) : 0;
   const points = values.map((v, i) => {
     const x = pad + i * step;
-    const y = h - pad - ((v - min) / range) * (h - pad * 2);
+    const y = range ? h - pad - ((v - min) / range) * (h - pad * 2) : h / 2;
     return `${x},${y}`;
   });
   const path = "M" + points.join(" L");
   return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-    <polyline points="${points.join(" ")}" fill="none" stroke="var(--c-crimson-bright)" stroke-width="2" vector-effect="non-scaling-stroke"/>
-    <path d="${path} L${w - pad},${h} L${pad},${h} Z" fill="var(--c-crimson)" opacity="0.12"/>
+    <path d="${path} L${w - pad},${h} L${pad},${h} Z" fill="var(--c-off)" opacity="0.06"/>
+    <polyline points="${points.join(" ")}" fill="none" stroke="var(--c-off)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
   </svg>`;
 }
 
