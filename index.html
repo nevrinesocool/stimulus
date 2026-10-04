@@ -874,6 +874,9 @@ h1,h2,h3,h4{ font-weight:700; letter-spacing:-0.02em; }
 .eyebrow{ text-transform:none; letter-spacing:0; font-size:13px; font-weight:500; color:var(--c-off-faint); }
 .badge{ text-transform:none; letter-spacing:0; font-size:11px; padding:3px 8px; }
 
+/* leave room under the last item for the rest timer + floating nav */
+.app-main{ padding-bottom: calc(112px + var(--nav-h) + var(--safe-b)); }
+
 /* header: quiet, no rule, status as a dot */
 .app-header{
   background: rgba(0,0,0,0.72);
@@ -1038,6 +1041,31 @@ html[data-theme="light"] .field input[type="date"]{ color-scheme: light; }
 .cal-cell.cal-partial{ background: transparent; border:1.5px solid var(--c-off); color: var(--c-off); }
 .cal-cell.cal-skipped{ background: transparent; border:1.5px dashed var(--c-off-faint); color: var(--c-off-dim); }
 .cal-cell[data-skip-date]{ cursor:pointer; }
+
+/* sync status in the header */
+.save-indicator[data-state="pending"] .label{ font-size: var(--fs-xs); }
+.save-indicator[data-state="pending"] .dot{ background: var(--c-off); }
+.save-indicator[data-state="pending"]{ opacity: 1; color: var(--c-off-dim); }
+
+/* next-set target */
+.ex-next{ display:flex; flex-direction:column; gap:2px; margin:0 0 10px; padding:12px 14px; border-radius:14px; background: var(--c-charcoal); }
+.ex-next-main{ display:flex; align-items:baseline; gap:10px; }
+.ex-next-label{ font-size:12px; color: var(--c-off-faint); }
+.ex-next-val{ font-size:20px; font-weight:600; letter-spacing:-0.02em; }
+.ex-next-why{ font-size:12.5px; color: var(--c-off-dim); line-height:1.35; }
+.ex-stall{ font-size:12.5px; color: var(--c-off-dim); border:1px dashed var(--c-hairline-strong); border-radius:12px; padding:9px 12px; margin:0 0 10px; }
+
+/* This week by muscle */
+.mw-row{ padding:8px 0; }
+.mw-head{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:14px; }
+.mw-name{ font-weight:500; }
+.mw-num{ font-weight:600; white-space:nowrap; }
+.mw-sub{ font-weight:400; color: var(--c-off-faint); font-size:12.5px; margin-left:6px; }
+.mw-flag{ font-weight:500; font-size:11px; margin-left:8px; padding:1px 7px; border-radius:999px; border:1px solid var(--c-hairline-strong); color: var(--c-off-dim); }
+.mw-bar{ position:relative; height:8px; margin-top:7px; border-radius:4px; background: var(--c-charcoal); overflow:hidden; }
+.mw-band{ position:absolute; top:0; bottom:0; background: var(--c-hairline-strong); }
+.mw-plan{ position:absolute; top:0; bottom:0; background: repeating-linear-gradient(135deg, var(--c-off-faint) 0 3px, transparent 3px 6px); opacity:.6; }
+.mw-fill{ position:absolute; top:0; bottom:0; left:0; background: var(--c-off); border-radius:4px; }
 
 @media (prefers-reduced-motion: reduce){
   *{ animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
@@ -2072,50 +2100,407 @@ function recordIdOf(storeName, value) {
   return String(value.id);
 }
 
+// ============================================================================
+// OFFLINE LAYER — every read and write goes through a copy of your data kept
+// on this phone (IndexedDB). Writes land there instantly and are queued to
+// sync to Supabase in the background, so logging works with no signal and
+// nothing is lost if the connection drops mid-workout. Reads prefer the
+// server while it is reachable (so other devices stay in sync) and fall back
+// to the local copy when it isn't.
+// ============================================================================
+
+const UID_CACHE_KEY = "stimulus.uid";
+function cachedUserId() {
+  try { return localStorage.getItem(UID_CACHE_KEY); } catch (_) { return null; }
+}
+
+// getSession() reads the stored login on the phone (no network round trip),
+// so it keeps working with no signal. The id is remembered as a fallback for
+// the moments the stored session can't be refreshed offline.
 async function currentUserId() {
-  const { data, error } = await supa.auth.getUser();
-  if (error || !data.user) throw new Error("Not signed in.");
-  return data.user.id;
+  try {
+    const { data } = await supa.auth.getSession();
+    const id = data?.session?.user?.id;
+    if (id) {
+      try { localStorage.setItem(UID_CACHE_KEY, id); } catch (_) {}
+      return id;
+    }
+  } catch (_) { /* fall through to the remembered id */ }
+  const cached = cachedUserId();
+  if (cached) return cached;
+  throw new Error("Not signed in.");
+}
+
+function netError(error, status) {
+  const e = error instanceof Error ? error : Object.assign(new Error((error && error.message) || "Request failed"), error || {});
+  e.status = status;
+  return e;
+}
+
+// Raw server calls — nothing here knows about the local copy.
+const netDb = {
+  async getAll(storeName) {
+    const uid = await currentUserId();
+    const { data, error, status } = await supa.from(TABLE).select("record_id, data").eq("user_id", uid).eq("store", storeName);
+    if (error) throw netError(error, status);
+    return data;
+  },
+  async get(storeName, key) {
+    const uid = await currentUserId();
+    const { data, error, status } = await supa.from(TABLE).select("data").eq("user_id", uid).eq("store", storeName).eq("record_id", String(key)).maybeSingle();
+    if (error) throw netError(error, status);
+    return data ? data.data : undefined;
+  },
+  async count(storeName) {
+    const uid = await currentUserId();
+    const { count, error, status } = await supa.from(TABLE).select("record_id", { count: "exact", head: true }).eq("user_id", uid).eq("store", storeName);
+    if (error) throw netError(error, status);
+    return count || 0;
+  },
+  async apply(e) {
+    let res;
+    if (e.op === "put") {
+      res = await supa.from(TABLE).upsert(
+        { user_id: e.uid, store: e.store, record_id: e.record_id, data: e.data, updated_at: new Date(e.t).toISOString() },
+        { onConflict: "user_id,store,record_id" }
+      );
+    } else if (e.op === "delete") {
+      res = await supa.from(TABLE).delete().eq("user_id", e.uid).eq("store", e.store).eq("record_id", e.record_id);
+    } else {
+      res = await supa.from(TABLE).delete().eq("user_id", e.uid).eq("store", e.store);
+    }
+    if (res.error) throw netError(res.error, res.status);
+  },
+};
+
+// ---- local copy (IndexedDB) ----
+let localDbPromise = null;
+let localBroken = false; // if IndexedDB is unavailable the app falls back to talking to the server directly
+
+function openLocalDb() {
+  if (localDbPromise) return localDbPromise;
+  localDbPromise = new Promise((resolve, reject) => {
+    try {
+      const req = indexedDB.open("stimulus-local-v1", 1);
+      req.onupgradeneeded = () => {
+        const d = req.result;
+        d.createObjectStore("rows", { keyPath: "k" });
+        d.createObjectStore("outbox", { keyPath: "seq", autoIncrement: true });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    } catch (err) { reject(err); }
+  });
+  return localDbPromise;
+}
+
+function idbReq(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function localTx(stores, mode, fn) {
+  const d = await openLocalDb();
+  return new Promise((resolve, reject) => {
+    const tx = d.transaction(stores, mode);
+    let out;
+    tx.oncomplete = () => resolve(out);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error("Local save aborted"));
+    Promise.resolve(fn(tx)).then((v) => { out = v; }, (err) => { try { tx.abort(); } catch (_) {} reject(err); });
+  });
+}
+
+const rowKey = (uid, store, id) => `${uid}|${store}|${id}`;
+const storeRange = (uid, store) => IDBKeyRange.bound(`${uid}|${store}|`, `${uid}|${store}|￿`);
+
+const local = {
+  async getRow(uid, store, id) {
+    return localTx(["rows"], "readonly", async (tx) => {
+      const r = await idbReq(tx.objectStore("rows").get(rowKey(uid, store, id)));
+      return r ? { data: r.data } : null;
+    });
+  },
+  async putRow(uid, store, id, data) {
+    await localTx(["rows"], "readwrite", async (tx) => { tx.objectStore("rows").put({ k: rowKey(uid, store, id), id, data }); });
+  },
+  async delRow(uid, store, id) {
+    await localTx(["rows"], "readwrite", async (tx) => { tx.objectStore("rows").delete(rowKey(uid, store, id)); });
+  },
+  async allRows(uid, store) {
+    return localTx(["rows"], "readonly", async (tx) => idbReq(tx.objectStore("rows").getAll(storeRange(uid, store))));
+  },
+  async countRows(uid, store) {
+    return localTx(["rows"], "readonly", async (tx) => idbReq(tx.objectStore("rows").count(storeRange(uid, store))));
+  },
+  async clearStore(uid, store) {
+    await localTx(["rows"], "readwrite", async (tx) => { tx.objectStore("rows").delete(storeRange(uid, store)); });
+  },
+  async replaceStore(uid, store, rows) {
+    await localTx(["rows"], "readwrite", async (tx) => {
+      const os = tx.objectStore("rows");
+      os.delete(storeRange(uid, store));
+      for (const r of rows) os.put({ k: rowKey(uid, store, r.record_id), id: r.record_id, data: r.data });
+    });
+  },
+  async outboxAll() {
+    return localTx(["outbox"], "readonly", async (tx) => idbReq(tx.objectStore("outbox").getAll()));
+  },
+  // Keeps the queue short: a newer write to the same record replaces the older
+  // one (autosave fires constantly), and a clear swallows everything before it.
+  async outboxAdd(entry) {
+    await localTx(["outbox"], "readwrite", async (tx) => {
+      const os = tx.objectStore("outbox");
+      const all = await idbReq(os.getAll());
+      for (const e of all) {
+        if (e.uid !== entry.uid || e.store !== entry.store) continue;
+        const same = entry.op === "clear" ? true : (e.op !== "clear" && e.record_id === entry.record_id);
+        if (same) os.delete(e.seq);
+      }
+      os.add(entry);
+    });
+  },
+  async outboxRemove(seq) {
+    await localTx(["outbox"], "readwrite", async (tx) => { tx.objectStore("outbox").delete(seq); });
+  },
+  async outboxBump(seq) {
+    await localTx(["outbox"], "readwrite", async (tx) => {
+      const os = tx.objectStore("outbox");
+      const e = await idbReq(os.get(seq));
+      if (e) { e.attempts = (e.attempts || 0) + 1; os.put(e); }
+    });
+  },
+};
+
+// ---- sync state ----
+let pendingCount = 0;       // writes saved on this phone but not yet on the server
+let netBadUntil = 0;        // after a failed request, skip the network briefly so a weak signal doesn't stall every screen
+let writeEpoch = 0;         // bumps on every local write; lets a read notice a write raced it
+let netBadTimer = null;
+const syncListeners = [];
+const READ_TIMEOUT_MS = 5000;
+const WRITE_TIMEOUT_MS = 8000;
+
+function syncStatus() {
+  return { pending: pendingCount, offline: navigator.onLine === false || Date.now() < netBadUntil };
+}
+function emitSync() {
+  const st = syncStatus();
+  syncListeners.forEach((fn) => { try { fn(st); } catch (_) {} });
+}
+function onSyncChange(fn) {
+  syncListeners.push(fn);
+  fn(syncStatus());
+  return () => { const i = syncListeners.indexOf(fn); if (i !== -1) syncListeners.splice(i, 1); };
+}
+function markNetBad() {
+  netBadUntil = Date.now() + 20000;
+  clearTimeout(netBadTimer);
+  netBadTimer = setTimeout(() => { emitSync(); if (pendingCount > 0) flushOutbox(); }, 20200);
+  emitSync();
+}
+function markNetGood() {
+  if (netBadUntil) { netBadUntil = 0; emitSync(); }
+}
+async function refreshPending() {
+  try { pendingCount = (await local.outboxAll()).length; } catch (_) { /* keep last known */ }
+  emitSync();
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function withTimeout(promise, ms) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(Object.assign(new Error("Request timed out"), { status: 0, timedOut: true })), ms);
+    promise.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
+// A failure worth retrying later (no signal, server hiccup, expired login that
+// will refresh) versus one that will never succeed (the server rejected it).
+function isRetryable(err) {
+  if (!err) return true;
+  const st = err.status;
+  if (err.timedOut || !st) return true;
+  return st >= 500 || st === 408 || st === 429 || st === 401;
+}
+
+let flushPromise = null;
+let flushTimer = null;
+function scheduleFlush(delay = 400) {
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(() => { flushOutbox(); }, delay);
+}
+
+// Sends queued writes to the server in order. Safe to call any time; resolves
+// early (without waiting for the network) if maxWaitMs is given.
+function flushOutbox(maxWaitMs) {
+  if (localBroken) return Promise.resolve();
+  if (!flushPromise) {
+    flushPromise = (async () => {
+      try {
+        if (navigator.onLine === false || Date.now() < netBadUntil) return;
+        let me;
+        try { me = await currentUserId(); } catch (_) { return; }
+        const list = await local.outboxAll();
+        for (const e of list) {
+          if (e.uid !== me) continue;
+          try {
+            await withTimeout(netDb.apply(e), WRITE_TIMEOUT_MS);
+            await local.outboxRemove(e.seq);
+            markNetGood();
+            await refreshPending();
+          } catch (err) {
+            if (isRetryable(err)) { markNetBad(); break; }
+            if ((e.attempts || 0) + 1 >= 3) {
+              await local.outboxRemove(e.seq);
+              console.warn("[sync] dropped a change the server rejected", e, err);
+              if (typeof toast === "function") toast("One change couldn't be saved to your account");
+            } else {
+              await local.outboxBump(e.seq);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[sync] flush failed", err);
+      } finally {
+        await refreshPending();
+        flushPromise = null;
+        if (pendingCount > 0 && Date.now() >= netBadUntil && navigator.onLine !== false) scheduleFlush(1500);
+      }
+    })();
+  }
+  return maxWaitMs ? Promise.race([flushPromise, sleep(maxWaitMs)]) : flushPromise;
+}
+
+window.addEventListener("online", () => { netBadUntil = 0; emitSync(); flushOutbox(); });
+window.addEventListener("offline", () => emitSync());
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && pendingCount > 0) { netBadUntil = 0; flushOutbox(); }
+});
+setInterval(() => { if (pendingCount > 0) flushOutbox(); }, 15000);
+
+// Is it safe and worthwhile to read from the server right now? Pending local
+// writes are sent first so a read never returns data older than what the user
+// just entered.
+async function networkReadable() {
+  if (pendingCount > 0) await flushOutbox(4000);
+  return pendingCount === 0 && navigator.onLine !== false && Date.now() >= netBadUntil;
+}
+
+async function queueWrite(entry) {
+  writeEpoch++;
+  await local.outboxAdd(entry);
+  await refreshPending();
+  scheduleFlush(250);
 }
 
 const db = {
   async getAll(storeName) {
+    if (localBroken) return (await netDb.getAll(storeName)).map((r) => r.data);
     const uid = await currentUserId();
-    const { data, error } = await supa.from(TABLE).select("data").eq("user_id", uid).eq("store", storeName);
-    if (error) throw error;
-    return data.map((row) => row.data);
+    if (await networkReadable()) {
+      const epoch = writeEpoch;
+      try {
+        const rows = await withTimeout(netDb.getAll(storeName), READ_TIMEOUT_MS);
+        markNetGood();
+        if (epoch !== writeEpoch) return (await local.allRows(uid, storeName)).map((r) => r.data); // a write raced the fetch; the local copy is newer
+        await local.replaceStore(uid, storeName, rows);
+        return rows.map((r) => r.data);
+      } catch (err) {
+        if (!isRetryable(err)) throw err;
+        markNetBad();
+      }
+    }
+    return (await local.allRows(uid, storeName)).map((r) => r.data);
   },
   async get(storeName, key) {
+    if (localBroken) return netDb.get(storeName, key);
     const uid = await currentUserId();
-    const { data, error } = await supa.from(TABLE).select("data").eq("user_id", uid).eq("store", storeName).eq("record_id", String(key)).maybeSingle();
-    if (error) throw error;
-    return data ? data.data : undefined;
+    const id = String(key);
+    if (await networkReadable()) {
+      const epoch = writeEpoch;
+      try {
+        const data = await withTimeout(netDb.get(storeName, id), READ_TIMEOUT_MS);
+        markNetGood();
+        if (epoch !== writeEpoch) { const row = await local.getRow(uid, storeName, id); return row ? row.data : undefined; }
+        if (data === undefined) await local.delRow(uid, storeName, id);
+        else await local.putRow(uid, storeName, id, data);
+        return data;
+      } catch (err) {
+        if (!isRetryable(err)) throw err;
+        markNetBad();
+      }
+    }
+    const row = await local.getRow(uid, storeName, id);
+    return row ? row.data : undefined;
   },
   async put(storeName, value) {
     const uid = await currentUserId();
-    const record_id = recordIdOf(storeName, value);
-    const { error } = await supa.from(TABLE).upsert(
-      { user_id: uid, store: storeName, record_id, data: value, updated_at: new Date().toISOString() },
-      { onConflict: "user_id,store,record_id" }
-    );
-    if (error) throw error;
+    const id = recordIdOf(storeName, value);
+    if (!localBroken) {
+      try {
+        await local.putRow(uid, storeName, id, value);
+        await queueWrite({ uid, store: storeName, record_id: id, op: "put", data: value, attempts: 0, t: Date.now() });
+        return value;
+      } catch (err) {
+        console.warn("[sync] local store failed, writing straight to the server", err);
+        localBroken = true;
+      }
+    }
+    await netDb.apply({ uid, store: storeName, record_id: id, op: "put", data: value, t: Date.now() });
     return value;
   },
   async delete(storeName, key) {
     const uid = await currentUserId();
-    const { error } = await supa.from(TABLE).delete().eq("user_id", uid).eq("store", storeName).eq("record_id", String(key));
-    if (error) throw error;
+    const id = String(key);
+    if (!localBroken) {
+      try {
+        await local.delRow(uid, storeName, id);
+        await queueWrite({ uid, store: storeName, record_id: id, op: "delete", attempts: 0, t: Date.now() });
+        return;
+      } catch (err) {
+        console.warn("[sync] local store failed, writing straight to the server", err);
+        localBroken = true;
+      }
+    }
+    await netDb.apply({ uid, store: storeName, record_id: id, op: "delete", t: Date.now() });
   },
   async clear(storeName) {
     const uid = await currentUserId();
-    const { error } = await supa.from(TABLE).delete().eq("user_id", uid).eq("store", storeName);
-    if (error) throw error;
+    if (!localBroken) {
+      try {
+        await local.clearStore(uid, storeName);
+        await queueWrite({ uid, store: storeName, record_id: "*", op: "clear", attempts: 0, t: Date.now() });
+        return;
+      } catch (err) {
+        console.warn("[sync] local store failed, writing straight to the server", err);
+        localBroken = true;
+      }
+    }
+    await netDb.apply({ uid, store: storeName, op: "clear", t: Date.now() });
   },
   async count(storeName) {
     const uid = await currentUserId();
-    const { count, error } = await supa.from(TABLE).select("record_id", { count: "exact", head: true }).eq("user_id", uid).eq("store", storeName);
-    if (error) throw error;
-    return count || 0;
+    const fromLocal = async (cause) => {
+      const n = await local.countRows(uid, storeName);
+      if (n === 0 && storeName === STORE_KV) {
+        throw cause || new Error("You're offline and nothing is saved on this device yet. Connect once to load your data.");
+      }
+      return n;
+    };
+    if (localBroken) return netDb.count(storeName);
+    if (!(await networkReadable())) return fromLocal();
+    try {
+      const n = await withTimeout(netDb.count(storeName), READ_TIMEOUT_MS);
+      markNetGood();
+      return n;
+    } catch (err) {
+      if (!isRetryable(err)) throw err;
+      markNetBad();
+      return fromLocal(err);
+    }
   },
 };
 
@@ -2163,6 +2548,8 @@ const DEFAULT_SETTINGS = {
   restTimerSound: true, // play a chime (in addition to vibration) when rest ends
   exerciseRestSeconds: {}, // { [exerciseId]: seconds } per-exercise override of restTimerSeconds
   stepGoal: 10000, // daily step goal used by the Steps card on the Dashboard
+  weeklySetsMin: 10, // target range for sets per muscle per week (This week by muscle card)
+  weeklySetsMax: 20,
 };
 
 const DEFAULT_PROGRAM_STATE = {
@@ -2197,6 +2584,9 @@ async function saving(fn) {
 }
 
 async function init() {
+  // Know about unsynced writes from last time before the first read, so a
+  // stale server copy can never replace something still waiting to upload.
+  await refreshPending();
   const probe = await probeDB();
   if (!probe.ok) {
     return { ok: false, reason: probe.reason };
@@ -2206,6 +2596,14 @@ async function init() {
   // gets their own isolated rows (enforced by Row Level Security), so a new
   // account is guaranteed to start with zero records. Just seed defaults
   // for anything this user doesn't have yet.
+  // Make sure this phone holds a full copy of the account's settings/program
+  // data, so a missing local record can only mean "doesn't exist" and never
+  // "not downloaded yet". Skipped silently when offline.
+  await refreshPending();
+  flushOutbox();
+  try { await db.getAll(STORE_KV); } catch (_) { /* offline: use what is already on the phone */ }
+  db.getAll(STORE_WORKOUTS).catch(() => {});
+
   const meta = await db.get(STORES.KV, KV_META);
   if (!meta) {
     await db.put(STORES.KV, { key: KV_META, ...DEFAULT_META });
@@ -2824,6 +3222,7 @@ async function resetAllData() {
 
 const storage = {
   init, dbUnavailableReason, onSaveStateChange, DEFAULT_SETTINGS,
+  onSyncChange, getSyncStatus: syncStatus, syncNow: () => flushOutbox(6000),
   getSettings, saveSettings, getProgramState, setProgramState, getMeta,
   getWorkouts, getWorkout, saveWorkout, updateWorkout, deleteWorkout,
   getActiveWorkout, saveActiveWorkout, deleteActiveWorkout,
@@ -3436,14 +3835,34 @@ function dateInputModal({ title, body, label, initialValue, confirmLabel = "Next
 // Wires the header save indicator to storage.js's onSaveStateChange stream.
 function initSaveIndicator(onSaveStateChange) {
   const indicator = document.getElementById("save-indicator");
+  const label = indicator.querySelector(".label");
   let resetTimer = null;
+  let baseState = "idle";
+  let sync = storage.getSyncStatus();
+
+  // Unsynced or offline wins over "Saved" so you always know whether your
+  // sets have reached your account, but a real save error still shows.
+  const paint = () => {
+    if (baseState !== "error" && (sync.pending > 0 || sync.offline)) {
+      indicator.dataset.state = "pending";
+      label.textContent = sync.offline
+        ? (sync.pending > 0 ? `Offline · ${sync.pending} to sync` : "Offline")
+        : `Syncing ${sync.pending}…`;
+    } else {
+      indicator.dataset.state = baseState;
+      label.textContent = "Saved";
+    }
+  };
+
   onSaveStateChange((state) => {
-    indicator.dataset.state = state;
+    baseState = state;
+    paint();
     if (state === "saved") {
       clearTimeout(resetTimer);
-      resetTimer = setTimeout(() => { indicator.dataset.state = "idle"; }, 1800);
+      resetTimer = setTimeout(() => { baseState = "idle"; paint(); }, 1800);
     }
   });
+  storage.onSyncChange((st) => { sync = st; paint(); });
 }
 
 function qs(sel, root = document) { return root.querySelector(sel); }
@@ -3545,6 +3964,7 @@ async function dashboardRender(container, navigate) {
   html += `<div class="section-title"><h2>Stats</h2></div><div class="stats-grid">`;
   html += stepsCardHtml(stepLogs, settingsData);
   html += workoutSplitCardHtml(workouts);
+  html += weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, settingsData, skipLogs);
   html += skippedCardHtml(skipLogs, workouts);
   html += oneRepMaxCardHtml(workouts, settingsData);
 
@@ -3755,6 +4175,89 @@ function weekStripHtml(workouts, programHistory, scheduleOverrides, skipLogs) {
   return `
     <div class="week-strip">${cells}</div>
     <div class="wk-caption"><span>${caption}</span><button class="link-btn" type="button" data-act="log-skip">Log skipped day</button></div>`;
+}
+
+// Sets per muscle this week (Mon–Sun): what you've done, what the schedule
+// still has planned, and the target range from Settings. Additional muscles
+// count at half weight, same as the Program Overview.
+function weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, settingsData, skipLogs) {
+  const lo = settingsData.weeklySetsMin || 10;
+  const hi = settingsData.weeklySetsMax || 20;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayKey = dateKey(today);
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  const mondayKey = dateKey(monday);
+
+  const defByName = new Map(allExerciseDefs().map((d) => [normalizeExerciseName(d.name), d]));
+  const done = {};
+  const trainedKeys = new Set();
+  for (const w of workouts) {
+    if (w.status === "abandoned") continue;
+    const k = dateKey(new Date(w.startedAt));
+    trainedKeys.add(k);
+    if ((w.status !== "completed" && w.status !== "partial") || k < mondayKey) continue;
+    for (const entry of w.exercises) {
+      const n = entry.sets.filter((x) => x.completed).length;
+      if (!n) continue;
+      const def = findExerciseDef(entry.exerciseId) || defByName.get(normalizeExerciseName(entry.name));
+      exerciseMuscles(def || {}).forEach((m, idx) => {
+        done[m.muscle] = (done[m.muscle] || 0) + n * (idx === 0 ? 1 : SECONDARY_MUSCLE_VOLUME_WEIGHT);
+      });
+    }
+  }
+
+  const skipped = new Set((skipLogs || []).map((e) => e.date));
+  const planned = {};
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const k = dateKey(d);
+    if (k < todayKey || (k === todayKey && (trainedKeys.has(k) || skipped.has(k)))) continue;
+    if (skipped.has(k)) continue;
+    const t = effectiveDayTypeForDateV(d, programHistory, scheduleOverrides);
+    if (!t || t === "R" || !PROGRAM[t]) continue;
+    for (const [m, v] of Object.entries(programMuscleVolume(t))) planned[m] = (planned[m] || 0) + v;
+  }
+
+  const keys = [...new Set([...Object.keys(done), ...Object.keys(planned)])]
+    .sort((a, b) => ((done[b] || 0) + (planned[b] || 0)) - ((done[a] || 0) + (planned[a] || 0)))
+    .slice(0, 10);
+
+  const fmt = (v) => String(roundTo(v, 1) ?? 0);
+  let body;
+  if (!keys.length) {
+    body = `<div class="sc-caption" style="margin-top:0;">Train this week to see your sets by muscle.</div>`;
+  } else {
+    const maxVal = Math.max(hi * 1.25, ...keys.map((m) => ((done[m] || 0) + (planned[m] || 0)) * 1.05));
+    const pct = (v) => Math.min(100, (v / maxVal) * 100);
+    body = keys.map((m) => {
+      const d = done[m] || 0;
+      const p = planned[m] || 0;
+      const proj = d + p;
+      const flag = proj < lo ? "Low" : proj > hi ? "High" : "";
+      return `
+        <div class="mw-row">
+          <div class="mw-head">
+            <span class="mw-name">${escapeHtml(muscleLabel(m))}</span>
+            <span class="mw-num">${fmt(d)}${p ? `<span class="mw-sub">+ ${fmt(p)} planned</span>` : ""}${flag ? `<span class="mw-flag">${flag}</span>` : ""}</span>
+          </div>
+          <div class="mw-bar" role="img" aria-label="${escapeHtml(muscleLabel(m))}: ${fmt(d)} sets done, ${fmt(p)} planned, target ${lo} to ${hi}">
+            <span class="mw-band" style="left:${pct(lo)}%; width:${pct(hi) - pct(lo)}%"></span>
+            <span class="mw-plan" style="left:${pct(d)}%; width:${pct(d + p) - pct(d)}%"></span>
+            <span class="mw-fill" style="width:${pct(d)}%"></span>
+          </div>
+        </div>`;
+    }).join("") + `<div class="sc-caption" style="margin-top:10px;">Shaded band is your target (${lo}–${hi} sets). Striped is what's still planned this week.</div>`;
+  }
+
+  return `
+    <div class="stat-card span-2">
+      <div class="sc-head"><span class="sc-icon">${ICONS.split}</span><span class="sc-title">This Week by Muscle</span></div>
+      ${body}
+    </div>`;
 }
 
 // Last 30 days: how many days you trained vs skipped, with the latest skips
@@ -4128,6 +4631,7 @@ async function openLogStepsModal(container, navigate) {
 let tickInterval = null;
 let cachedSettings = null;
 let cachedPreviousByExercise = {}; // exerciseId -> last completed entry (from history, excluding current active workout)
+let cachedStalled = {}; // exerciseId -> true when the lift hasn't set a new best in 3 sessions
 let dashboardPeriodRange = "weekly"; // weekly | monthly | yearly — Dashboard's period-comparison bar chart
 let dashboardVolumeTypeFilter = "all"; // "all" or a PROGRAM_DAY_TYPES key — narrows the Volume by Period chart to one workout type
 let dashboardVolumeUnit = "kg"; // "kg" | "lb" — display unit for the Volume by Period chart and the Total Volume stat
@@ -4448,6 +4952,94 @@ async function flushActiveWorkoutSave() {
   }
 }
 
+// ---- Next-set targets: double progression --------------------------------
+// Work up through the rep range at one weight; once the top of the range is
+// hit with reps still in reserve, add weight and drop back to the bottom.
+
+function parseRepRange(text) {
+  const t = String(text || "");
+  const m = t.match(/(\d+)\s*(?:-|–|to)\s*(\d+)/i);
+  if (m) {
+    const x = Number(m[1]), y = Number(m[2]);
+    return { lo: Math.min(x, y), hi: Math.max(x, y) };
+  }
+  const one = t.match(/(\d+)/);
+  if (one) { const n = Number(one[1]); return { lo: n, hi: n }; }
+  return null;
+}
+
+function rirNumber(v) {
+  if (v === "failure") return 0;
+  if (v === "2+") return 3;
+  const n = Number(v);
+  return v != null && v !== "" && Number.isFinite(n) ? n : null;
+}
+
+// One comparable { kg, reps, rir } per completed set. For a unilateral set the
+// weaker side decides, so a lagging side isn't progressed past.
+function setSummaryForTarget(s) {
+  if (!s.completed) return null;
+  if (s.unilateral) {
+    const kg = Math.max(s.leftWeightKg || 0, s.rightWeightKg || 0);
+    const reps = Math.min(s.leftReps || 0, s.rightReps || 0);
+    const rirs = [rirNumber(s.leftRir), rirNumber(s.rightRir)].filter((v) => v != null);
+    return kg && reps ? { kg, reps, rir: rirs.length ? rirs.reduce((x, y) => x + y, 0) / rirs.length : null } : null;
+  }
+  return s.weightKg && s.reps ? { kg: s.weightKg, reps: s.reps, rir: rirNumber(s.rir) } : null;
+}
+
+function weightStep(unit, w) {
+  if (unit === "lb") return w >= 100 ? 5 : 2.5;
+  if (w >= 60) return 2.5;
+  if (w >= 30) return 2;
+  if (w >= 10) return 1;
+  return 0.5;
+}
+
+function computeNextTarget(prevEntry, targetRepsText, unit) {
+  if (!prevEntry) return null;
+  const sets = prevEntry.sets.map(setSummaryForTarget).filter(Boolean);
+  if (!sets.length) return null;
+  const top = sets.reduce((a, b) => (b.kg > a.kg || (b.kg === a.kg && b.reps > a.reps)) ? b : a);
+  const range = parseRepRange(targetRepsText) || { lo: 8, hi: 12 };
+  const rirs = sets.map((x) => x.rir).filter((v) => v != null);
+  const avgRir = rirs.length ? rirs.reduce((x, y) => x + y, 0) / rirs.length : null;
+
+  const w = roundTo(displayWeight(top.kg, unit), 1);
+  const reps = top.reps;
+  let next;
+  if (reps >= range.hi && (avgRir == null || avgRir >= 1)) {
+    next = { kind: "up", weight: roundTo(w + weightStep(unit, w), 1), reps: range.lo, why: `You hit ${reps} reps with some left in the tank. Add weight and start the range again.` };
+  } else if (reps >= range.hi) {
+    next = { kind: "hold", weight: w, reps: range.hi, why: `${reps} reps but right at your limit. Own this weight once more before adding.` };
+  } else if (reps < range.lo) {
+    next = { kind: "hold", weight: w, reps: range.lo, why: `Last time ${reps} reps. Build back up to ${range.lo} at this weight.` };
+  } else {
+    next = { kind: "reps", weight: w, reps: reps + 1, why: `Same weight, one more rep than last time (${reps}).` };
+  }
+  return next;
+}
+
+// True when none of the last 3 sessions beat the one before them.
+function detectStall(history, exerciseId, name) {
+  const bests = [];
+  for (const w of history) {
+    if (w.status !== "completed" && w.status !== "partial") continue;
+    const entry = findExerciseEntryInWorkout(w, exerciseId, name);
+    if (!entry) continue;
+    let best = 0;
+    for (const set of entry.sets) {
+      const x = setSummaryForTarget(set);
+      if (x) best = Math.max(best, estimate1RM(x.kg, x.reps));
+    }
+    if (best > 0) bests.push(best);
+    if (bests.length === 4) break;
+  }
+  if (bests.length < 4) return false;
+  const baseline = bests[3] * 1.005;
+  return bests[0] <= baseline && bests[1] <= baseline && bests[2] <= baseline;
+}
+
 async function renderActiveWorkout(container, navigate) {
   teardown();
   const active = await storage.getActiveWorkout();
@@ -4460,8 +5052,10 @@ async function renderActiveWorkout(container, navigate) {
   // Pre-compute "previous performance" for every exercise, excluding this active session.
   const history = await storage.getWorkouts();
   cachedPreviousByExercise = {};
+  cachedStalled = {};
   for (const entry of active.exercises) {
     cachedPreviousByExercise[entry.exerciseId] = findPreviousEntry(history, entry.exerciseId, entry.name);
+    cachedStalled[entry.exerciseId] = detectStall(history, entry.exerciseId, entry.name);
   }
 
   paintActiveWorkout(container, active, navigate);
@@ -4536,10 +5130,12 @@ function renderExerciseCard(entry, workout) {
   const prev = cachedPreviousByExercise[entry.exerciseId];
   const prevLines = previousSetSummary(prev, entry.unilateral);
   const exerciseUnit = getExerciseUnit(cachedSettings, entry.exerciseId);
+  const next = computeNextTarget(prev, def?.targetReps, exerciseUnit);
+  const stalled = !!cachedStalled[entry.exerciseId];
 
   let setsHtml = "";
   entry.sets.forEach((set, i) => {
-    setsHtml += renderSetRow(entry, set, i, exerciseUnit);
+    setsHtml += renderSetRow(entry, set, i, exerciseUnit, next);
   });
 
   return `
@@ -4557,8 +5153,11 @@ function renderExerciseCard(entry, workout) {
         <button type="button" class="icon-btn" data-act="open-ex-options" data-exercise="${entry.exerciseId}" aria-label="Exercise options (unit, rest timer, plates, substitute)" style="flex-shrink:0;">⋯</button>
       </div>
       ${prevLines ? `<div class="ex-prev"><span class="ex-prev-label">Last time</span><div class="prev-chips">${prevLines.map((l) => `<span class="prev-chip">${escapeHtml(l)}</span>`).join("")}</div></div>` : `<div class="ex-prev text-faint">No previous data yet</div>`}
+      ${next ? `<div class="ex-next"><div class="ex-next-main"><span class="ex-next-label">Next</span><span class="ex-next-val">${next.weight} ${exerciseUnit} × ${next.reps}</span></div><div class="ex-next-why">${escapeHtml(next.why)}</div></div>` : ""}
+      ${stalled ? `<div class="ex-stall">No new best in the last 3 sessions. Try a lighter week or a different rep range.</div>` : ""}
       <div class="sets-list">${setsHtml}</div>
       <div class="quick-row">
+        ${next ? `<button class="chip-btn" data-act="use-target" data-exercise="${entry.exerciseId}">Use ${next.weight} ${exerciseUnit}</button>` : ""}
         ${prev ? `<button class="chip-btn" data-act="use-prev-weight" data-exercise="${entry.exerciseId}">Use Previous Weight</button>` : ""}
         ${prev ? `<button class="chip-btn" data-act="copy-prev-set" data-exercise="${entry.exerciseId}">Copy Previous Set</button>` : ""}
       </div>
@@ -4574,12 +5173,14 @@ function renderExerciseCard(entry, workout) {
   `;
 }
 
-function renderSetRow(entry, set, i, exerciseUnit) {
+function renderSetRow(entry, set, i, exerciseUnit, next) {
   const rowClass = set.completed ? "completed" : set.skipped ? "skipped" : "";
   const icon = set.completed ? "✓" : set.skipped ? "–" : "";
   // A set that already has a value keeps the unit it was recorded in; a
   // blank/never-touched set uses the exercise's current preferred unit.
   const unit = set.weightUnit || exerciseUnit;
+  const wHint = next && unit === exerciseUnit ? String(next.weight) : unit;
+  const rHint = next ? String(next.reps) : "reps";
 
   let inputs;
   if (set.unilateral) {
@@ -4589,15 +5190,15 @@ function renderSetRow(entry, set, i, exerciseUnit) {
       <div class="set-col">
         <div class="set-side-label">Left</div>
         <div style="display:flex; gap:4px;">
-          <input type="number" inputmode="decimal" placeholder="${unit}" value="${lw}" data-field="leftWeightKg" data-exercise="${entry.exerciseId}" data-set="${i}">
-          <input type="number" inputmode="numeric" placeholder="reps" value="${set.leftReps ?? ""}" data-field="leftReps" data-exercise="${entry.exerciseId}" data-set="${i}">
+          <input type="number" inputmode="decimal" placeholder="${wHint}" value="${lw}" data-field="leftWeightKg" data-exercise="${entry.exerciseId}" data-set="${i}">
+          <input type="number" inputmode="numeric" placeholder="${rHint}" value="${set.leftReps ?? ""}" data-field="leftReps" data-exercise="${entry.exerciseId}" data-set="${i}">
         </div>
       </div>
       <div class="set-col">
         <div class="set-side-label">Right</div>
         <div style="display:flex; gap:4px;">
-          <input type="number" inputmode="decimal" placeholder="${unit}" value="${rw}" data-field="rightWeightKg" data-exercise="${entry.exerciseId}" data-set="${i}">
-          <input type="number" inputmode="numeric" placeholder="reps" value="${set.rightReps ?? ""}" data-field="rightReps" data-exercise="${entry.exerciseId}" data-set="${i}">
+          <input type="number" inputmode="decimal" placeholder="${wHint}" value="${rw}" data-field="rightWeightKg" data-exercise="${entry.exerciseId}" data-set="${i}">
+          <input type="number" inputmode="numeric" placeholder="${rHint}" value="${set.rightReps ?? ""}" data-field="rightReps" data-exercise="${entry.exerciseId}" data-set="${i}">
         </div>
       </div>
     `;
@@ -4605,10 +5206,10 @@ function renderSetRow(entry, set, i, exerciseUnit) {
     const w = set.weightKg != null ? roundTo(displayWeight(set.weightKg, unit)) : "";
     inputs = `
       <div class="set-col">
-        <input type="number" inputmode="decimal" placeholder="${unit}" value="${w}" data-field="weightKg" data-exercise="${entry.exerciseId}" data-set="${i}">
+        <input type="number" inputmode="decimal" placeholder="${wHint}" value="${w}" data-field="weightKg" data-exercise="${entry.exerciseId}" data-set="${i}">
       </div>
       <div class="set-col">
-        <input type="number" inputmode="numeric" placeholder="reps" value="${set.reps ?? ""}" data-field="reps" data-exercise="${entry.exerciseId}" data-set="${i}">
+        <input type="number" inputmode="numeric" placeholder="${rHint}" value="${set.reps ?? ""}" data-field="reps" data-exercise="${entry.exerciseId}" data-set="${i}">
       </div>
     `;
   }
@@ -4768,7 +5369,10 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
     });
   });
 
-  // Use previous weight / copy previous set
+  // Use the suggested weight / previous weight / copy previous set
+  qsa('[data-act="use-target"]', container).forEach((btn) => {
+    btn.addEventListener("click", () => applyTarget(container, workout, btn.dataset.exercise));
+  });
   qsa('[data-act="use-prev-weight"]', container).forEach((btn) => {
     btn.addEventListener("click", () => applyPrevious(container, workout, btn.dataset.exercise, "weight"));
   });
@@ -4875,6 +5479,28 @@ function applyPrevious(container, workout, exerciseId, mode) {
   toast(mode === "full" ? "Copied previous set" : "Applied previous weight");
 }
 
+// Put the suggested weight into every set that isn't done yet. Reps stay
+// empty (they're what you actually do); the target shows as the placeholder.
+function applyTarget(container, workout, exerciseId) {
+  const entry = workout.exercises.find((e) => e.exerciseId === exerciseId);
+  const prev = cachedPreviousByExercise[exerciseId];
+  const def = PROGRAM[workout.type]?.exercises.find((e) => e.id === exerciseId);
+  const unit = getExerciseUnit(cachedSettings, exerciseId);
+  const next = computeNextTarget(prev, def?.targetReps, unit);
+  if (!entry || !next) return;
+  const kg = toStorageWeight(next.weight, unit);
+  entry.sets.forEach((s) => {
+    if (s.completed) return;
+    if (s.unilateral) { s.leftWeightKg = kg; s.rightWeightKg = kg; } else { s.weightKg = kg; }
+    s.weightUnit = unit;
+  });
+  queueActiveWorkoutSave(workout);
+  const card = qs(`.exercise-card[data-exercise="${exerciseId}"]`, container);
+  if (card) card.outerHTML = renderExerciseCard(entry, workout);
+  rewireExerciseCard(container, workout, exerciseId);
+  toast(`Set to ${next.weight} ${unit}`);
+}
+
 function rewireExerciseCard(container, workout, exerciseId) {
   const card = qs(`.exercise-card[data-exercise="${exerciseId}"]`, container);
   if (!card) return;
@@ -4939,6 +5565,7 @@ function rewireExerciseCard(container, workout, exerciseId) {
       updateProgressUI(container, workout);
     });
   });
+  qsa('[data-act="use-target"]', card).forEach((btn) => btn.addEventListener("click", () => applyTarget(container, workout, exerciseId)));
   qsa('[data-act="use-prev-weight"]', card).forEach((btn) => btn.addEventListener("click", () => applyPrevious(container, workout, exerciseId, "weight")));
   qsa('[data-act="copy-prev-set"]', card).forEach((btn) => btn.addEventListener("click", () => applyPrevious(container, workout, exerciseId, "full")));
   qsa('[data-act="set-tempo"]', card).forEach((btn) => {
@@ -6756,8 +7383,11 @@ async function settingsRender(container, navigate) {
   const workouts = await storage.getWorkouts();
   const hasData = workouts.length > 0;
   const hasBackup = !!meta.lastBackupAt;
-  const { data: userData } = await supa.auth.getUser();
-  const userEmail = userData?.user?.email || "—";
+  let userEmail = "—";
+  try {
+    const { data: sess } = await supa.auth.getSession();
+    userEmail = sess?.session?.user?.email || "—";
+  } catch (_) { /* offline */ }
 
   container.innerHTML = `
     <h1 style="font-size:22px; margin-bottom:16px;">Settings</h1>
@@ -6814,7 +7444,15 @@ async function settingsRender(container, navigate) {
         <input type="number" id="step-goal-input" inputmode="numeric" min="500" step="500" value="${settings.stepGoal || 10000}">
         <p class="text-faint" style="margin:8px 0 0;">Used by the Average Steps card on the Dashboard. Steps are logged by hand from your phone's Health app.</p>
       </div>
-      <button class="btn" id="step-goal-save" style="margin-top:14px;">Save Goal</button>
+      <div class="field" style="margin:16px 0 0;">
+        <label>Weekly sets per muscle</label>
+        <div style="display:flex; gap:10px;">
+          <input type="number" id="sets-min-input" inputmode="numeric" min="1" max="60" value="${settings.weeklySetsMin || 10}" aria-label="Minimum sets per week">
+          <input type="number" id="sets-max-input" inputmode="numeric" min="1" max="60" value="${settings.weeklySetsMax || 20}" aria-label="Maximum sets per week">
+        </div>
+        <p class="text-faint" style="margin:8px 0 0;">Minimum and maximum. The This week by muscle card shades this range. 10–20 is a common target.</p>
+      </div>
+      <button class="btn" id="step-goal-save" style="margin-top:14px;">Save goals</button>
     </div>
 
     <div class="section-title"><h2>Rest Timer</h2></div>
@@ -6906,9 +7544,15 @@ async function settingsRender(container, navigate) {
       toast("Enter a goal between 500 and 100,000");
       return;
     }
-    await storage.saveSettings({ stepGoal: n });
-    if (cachedSettings) cachedSettings.stepGoal = n;
-    toast("Step goal saved");
+    const setsLo = Math.round(Number(qs("#sets-min-input", container).value));
+    const setsHi = Math.round(Number(qs("#sets-max-input", container).value));
+    if (!(setsLo >= 1 && setsHi <= 60 && setsLo < setsHi)) {
+      toast("Weekly sets: the minimum must be below the maximum (1–60)");
+      return;
+    }
+    await storage.saveSettings({ stepGoal: n, weeklySetsMin: setsLo, weeklySetsMax: setsHi });
+    if (cachedSettings) Object.assign(cachedSettings, { stepGoal: n, weeklySetsMin: setsLo, weeklySetsMax: setsHi });
+    toast("Goals saved");
   });
 
   qs("#bg-choose-btn", container).addEventListener("click", () => qs("#bg-file", container).click());
@@ -6947,6 +7591,17 @@ async function settingsRender(container, navigate) {
       danger: true,
     });
     if (!ok) return;
+    await storage.syncNow();
+    const left = storage.getSyncStatus().pending;
+    if (left > 0) {
+      const sure = await confirmModal({
+        title: "Unsynced changes",
+        body: `${left} change${left === 1 ? " hasn't" : "s haven't"} reached your account yet. Connect to the internet and wait for the header to say Saved, or log out anyway and lose ${left === 1 ? "it" : "them"}.`,
+        confirmLabel: "Log out anyway",
+        danger: true,
+      });
+      if (!sure) return;
+    }
     await supa.auth.signOut();
   });
   qs("#program-overview-btn", container).addEventListener("click", () => navigate("program-overview"));
@@ -7857,6 +8512,7 @@ function renderAuthScreen() {
 
 supa.auth.onAuthStateChange((event) => {
   if (event === "SIGNED_OUT") {
+    try { localStorage.removeItem(UID_CACHE_KEY); } catch (_) {}
     // Rest timer state is device-local, not per-account — clear it on
     // sign-out so a timer started by one account can't bleed into the
     // next person who signs in on this device/browser.
@@ -7868,7 +8524,9 @@ supa.auth.onAuthStateChange((event) => {
 async function boot() {
   try {
     const { data: sessionData } = await supa.auth.getSession();
-    if (!sessionData.session) {
+    // With no signal the stored login can't always be refreshed, but the data
+    // on the phone is still this person's — let them in.
+    if (!sessionData.session && !(navigator.onLine === false && cachedUserId())) {
       renderAuthScreen();
       return;
     }

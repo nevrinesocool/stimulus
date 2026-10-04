@@ -2,8 +2,12 @@
 // Workout data lives in Supabase and still needs the network.
 // Bump CACHE_VERSION on every deploy; old caches are deleted on activate.
 
-const CACHE_VERSION = "v31";
+const CACHE_VERSION = "v32";
 const CACHE_NAME = `stimulus-shell-${CACHE_VERSION}`;
+
+// The app can't start without this library, so it is cached too (the page
+// loads it from a CDN). Without it the app wouldn't open with no signal.
+const SUPABASE_JS = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js";
 
 const SHELL_FILES = [
   "./",
@@ -19,6 +23,7 @@ self.addEventListener("install", (event) => {
     caches.open(CACHE_NAME).then(async (cache) => {
       // One by one: a single missing icon used to make addAll reject and kill the install.
       await Promise.all(SHELL_FILES.map((f) => cache.add(f).catch(() => {})));
+      try { await cache.put(SUPABASE_JS, await fetch(new Request(SUPABASE_JS, { mode: "no-cors" }))); } catch (_) {}
     }).then(() => self.skipWaiting())
   );
 });
@@ -43,7 +48,18 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
 
-  if (url.origin !== self.location.origin) return; // never touch third-party requests (CDN, Supabase)
+  if (req.url === SUPABASE_JS) {
+    // cache-first, refreshed in the background
+    event.respondWith(
+      caches.match(req).then((cached) => {
+        const net = fetch(req).then((res) => { putInCache(req, res); return res; }).catch(() => cached || Response.error());
+        return cached || net;
+      })
+    );
+    return;
+  }
+
+  if (url.origin !== self.location.origin) return; // never touch other third-party requests (Supabase data API)
 
   if (req.mode === "navigate") {
     event.respondWith(
