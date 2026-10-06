@@ -1067,6 +1067,41 @@ html[data-theme="light"] .field input[type="date"]{ color-scheme: light; }
 .mw-plan{ position:absolute; top:0; bottom:0; background: repeating-linear-gradient(135deg, var(--c-off-faint) 0 3px, transparent 3px 6px); opacity:.6; }
 .mw-fill{ position:absolute; top:0; bottom:0; left:0; background: var(--c-off); border-radius:4px; }
 
+/* ==========================================================================
+   v3 fixes — sizing + typing
+   ========================================================================== */
+html, body{ overflow-x:hidden; }
+/* 16px minimum stops phones from zooming the page when a field is focused,
+   which made typing jumpy and shifted every box on screen. */
+input, select, textarea{ font-size:16px; }
+.select-inline, .search-input, .field input, .field select, .field textarea{ font-size:16px; }
+.set-inputs input{ font-size:17px; padding-left:2px; padding-right:2px; }
+.ex-head > div:first-child{ min-width:0; }
+.ex-name{ overflow-wrap:anywhere; }
+.history-item .h-index{ width:auto; min-width:44px; font-size:15px; white-space:nowrap; }
+.history-item .h-body{ min-width:0; }
+.h-title{ flex-wrap:wrap; }
+.kpi{ padding:14px 0 12px 10px; }
+.kpi-value{ font-size:clamp(18px, 6vw, 26px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.chart-wrap svg{ height:auto; max-height:170px; }
+.rest-timer-actions{ gap:4px; }
+.rt-btn{ min-height:36px; padding:8px; }
+.rest-timer-bar{ gap:8px; padding:10px; }
+.btn{ min-width:0; }
+.btn-row{ flex-wrap:wrap; }
+.modal-sheet{ overflow-x:hidden; }
+.workout-timer{ font-size:13px; color:var(--c-off-faint); margin-left:8px; font-variant-numeric:tabular-nums; }
+.set-edit-row{ display:flex; gap:8px; margin-top:10px; }
+@media (max-width: 420px){
+  /* Unilateral sets: stack Left above Right instead of squeezing four boxes into one row */
+  .set-inputs:has(.set-side-label){ flex-direction:column; gap:8px; }
+  .set-complete-btn{ width:44px; height:44px; }
+  .set-inputs input{ min-height:46px; }
+  .hero-actions .btn{ font-size:15px; }
+  .stats-grid{ gap:10px; }
+  .stat-card{ padding:12px; }
+}
+
 @media (prefers-reduced-motion: reduce){
   *{ animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
@@ -3299,10 +3334,10 @@ function escapeHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
-function toast(message, { undo, duration = 3200 } = {}) {
+function toast(message, { undo, duration = 3200, actionLabel = "Undo" } = {}) {
   const el = document.createElement("div");
   el.className = "toast";
-  el.innerHTML = `<span>${escapeHtml(message)}</span>` + (undo ? `<button class="undo-btn" type="button">Undo</button>` : "");
+  el.innerHTML = `<span>${escapeHtml(message)}</span>` + (undo ? `<button class="undo-btn" type="button">${escapeHtml(actionLabel)}</button>` : "");
   toastRegion.appendChild(el);
 
   let removed = false;
@@ -4632,6 +4667,122 @@ let tickInterval = null;
 let cachedSettings = null;
 let cachedPreviousByExercise = {}; // exerciseId -> last completed entry (from history, excluding current active workout)
 let cachedStalled = {}; // exerciseId -> true when the lift hasn't set a new best in 3 sessions
+let cachedBestE1RM = {}; // exerciseId -> best estimated 1RM (kg) across history, for PR alerts
+
+// Best estimated 1RM (kg) among the completed sets of one workout entry.
+function entryBestE1RM(entry) {
+  let best = 0;
+  for (const s of entry.sets || []) {
+    if (!s.completed) continue;
+    if (s.unilateral) {
+      best = Math.max(best, estimate1RM(s.leftWeightKg, s.leftReps), estimate1RM(s.rightWeightKg, s.rightReps));
+    } else {
+      best = Math.max(best, estimate1RM(s.weightKg, s.reps));
+    }
+  }
+  return best;
+}
+
+// Personal-record alert: a just-completed set beats the best estimated 1RM
+// from all past sessions. The first-ever log of a lift only sets a baseline.
+function checkForPR(entry, set) {
+  const setBest = entryBestE1RM({ sets: [set] });
+  const prevBest = cachedBestE1RM[entry.exerciseId] || 0;
+  if (prevBest > 0 && setBest > prevBest + 0.01) {
+    cachedBestE1RM[entry.exerciseId] = setBest;
+    hapticTap([30, 60, 30]);
+    toast(`🏆 New PR on ${entry.name}!`, { duration: 4500 });
+  } else if (prevBest === 0 && setBest > 0) {
+    cachedBestE1RM[entry.exerciseId] = setBest;
+  }
+}
+
+// ---- typed values: save as you type, not just on blur -----------------------
+// Number boxes used to save only on "change" (blur). If the phone locked or the
+// app was backgrounded while a box was still focused, that value was lost.
+// Now the model updates on every keystroke, the save is debounced, and it is
+// flushed immediately when the page is hidden.
+const INTEGER_FIELDS = new Set(["reps", "leftReps", "rightReps"]);
+let liveWorkoutRef = null;
+let typedSaveTimer = null;
+
+function commitSetInput(input, workout) {
+  const { field, exercise, set } = input.dataset;
+  const entry = workout.exercises.find((e) => e.exerciseId === exercise);
+  const s = entry && entry.sets[Number(set)];
+  if (!s) return false;
+  let raw = input.value === "" ? null : Number(input.value);
+  if (raw != null && !Number.isFinite(raw)) raw = null;
+  if (raw != null && raw < 0) raw = 0;
+  if (raw != null && INTEGER_FIELDS.has(field)) raw = Math.round(raw);
+  if (field === "weightKg" || field === "leftWeightKg" || field === "rightWeightKg") {
+    const effectiveUnit = s.weightUnit || getExerciseUnit(cachedSettings, exercise);
+    s[field] = raw == null ? null : toStorageWeight(raw, effectiveUnit);
+    if (raw != null) s.weightUnit = effectiveUnit;
+  } else {
+    s[field] = raw;
+  }
+  return true;
+}
+
+function wireSetInput(input, workout) {
+  liveWorkoutRef = workout;
+  input.addEventListener("input", () => {
+    if (!commitSetInput(input, workout)) return;
+    clearTimeout(typedSaveTimer);
+    typedSaveTimer = setTimeout(() => queueActiveWorkoutSave(workout), 500);
+  });
+  input.addEventListener("change", () => {
+    // Blur / Enter: clean up what's shown (e.g. a negative number) and save now.
+    if (!commitSetInput(input, workout)) return;
+    const { field, exercise, set } = input.dataset;
+    const s = workout.exercises.find((e) => e.exerciseId === exercise).sets[Number(set)];
+    if (input.value !== "" && Number(input.value) < 0) input.value = "0";
+    if (INTEGER_FIELDS.has(field) && s[field] != null) input.value = String(s[field]);
+    clearTimeout(typedSaveTimer);
+    queueActiveWorkoutSave(workout);
+  });
+}
+
+function flushTypedInputs() {
+  if (!liveWorkoutRef || currentRoute !== "workout-active") return;
+  const el = document.activeElement;
+  if (el && el.matches && el.matches("input[data-field]")) commitSetInput(el, liveWorkoutRef);
+  clearTimeout(typedSaveTimer);
+  queueActiveWorkoutSave(liveWorkoutRef);
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushTypedInputs(); });
+window.addEventListener("pagehide", flushTypedInputs);
+
+// Enter / Next jumps to the following box within one exercise card.
+function wireEnterKey(card) {
+  const fieldInputs = qsa('input[data-field]', card);
+  fieldInputs.forEach((input, idx) => {
+    input.setAttribute("enterkeyhint", idx === fieldInputs.length - 1 ? "done" : "next");
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter") return;
+      ev.preventDefault();
+      const nextInput = fieldInputs[idx + 1];
+      if (nextInput) { nextInput.focus(); if (nextInput.select) nextInput.select(); } else { input.blur(); }
+    });
+  });
+}
+
+// Total volume (kg x reps) of completed sets in a workout.
+function workoutVolumeKg(workout) {
+  let total = 0;
+  for (const e of workout.exercises) {
+    for (const s of e.sets) {
+      if (!s.completed) continue;
+      if (s.unilateral) {
+        total += (s.leftWeightKg || 0) * (s.leftReps || 0) + (s.rightWeightKg || 0) * (s.rightReps || 0);
+      } else {
+        total += (s.weightKg || 0) * (s.reps || 0);
+      }
+    }
+  }
+  return total;
+}
 let dashboardPeriodRange = "weekly"; // weekly | monthly | yearly — Dashboard's period-comparison bar chart
 let dashboardVolumeTypeFilter = "all"; // "all" or a PROGRAM_DAY_TYPES key — narrows the Volume by Period chart to one workout type
 let dashboardVolumeUnit = "kg"; // "kg" | "lb" — display unit for the Volume by Period chart and the Total Volume stat
@@ -4714,7 +4865,7 @@ function barChart(buckets, unit) {
     const x = pad + i * (barW + gap) + barW / 2;
     return `<text x="${x}" y="${h - 3}" font-size="9" fill="var(--c-off-faint)" text-anchor="middle">${escapeHtml(b.label)}</text>`;
   }).join("");
-  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${bars}${labels}</svg>`;
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">${bars}${labels}</svg>`;
 }
 
 // The headline line above the chart: this period's total plus how it
@@ -4743,7 +4894,27 @@ function stopTicking() {
   if (tickInterval) { clearInterval(tickInterval); tickInterval = null; }
 }
 
+// Keep the screen on while a workout is open so the phone doesn't lock
+// between sets. Best-effort: browsers without the Wake Lock API just skip it.
+let wakeLockSentinel = null;
+async function acquireWakeLock() {
+  try {
+    if (!("wakeLock" in navigator) || wakeLockSentinel) return;
+    wakeLockSentinel = await navigator.wakeLock.request("screen");
+    wakeLockSentinel.addEventListener("release", () => { wakeLockSentinel = null; });
+  } catch (_) { wakeLockSentinel = null; }
+}
+function releaseWakeLock() {
+  try { if (wakeLockSentinel) wakeLockSentinel.release(); } catch (_) {}
+  wakeLockSentinel = null;
+}
+document.addEventListener("visibilitychange", () => {
+  // The browser drops the lock when the app is backgrounded; take it again on return.
+  if (document.visibilityState === "visible" && currentRoute === "workout-active") acquireWakeLock();
+});
+
 function teardown() {
+  releaseWakeLock();
   stopTicking();
 }
 
@@ -5053,9 +5224,17 @@ async function renderActiveWorkout(container, navigate) {
   const history = await storage.getWorkouts();
   cachedPreviousByExercise = {};
   cachedStalled = {};
+  cachedBestE1RM = {};
   for (const entry of active.exercises) {
     cachedPreviousByExercise[entry.exerciseId] = findPreviousEntry(history, entry.exerciseId, entry.name);
     cachedStalled[entry.exerciseId] = detectStall(history, entry.exerciseId, entry.name);
+    let best = 0;
+    for (const w of history) {
+      if (w.status !== "completed" && w.status !== "partial") continue;
+      const past = findExerciseEntryInWorkout(w, entry.exerciseId, entry.name);
+      if (past) best = Math.max(best, entryBestE1RM(past));
+    }
+    cachedBestE1RM[entry.exerciseId] = best;
   }
 
   paintActiveWorkout(container, active, navigate);
@@ -5096,7 +5275,7 @@ function paintActiveWorkout(container, workout, navigate) {
   let html = `
     <div class="workout-header">
       <div>
-        <div class="eyebrow">In progress</div>
+        <div class="eyebrow">In progress<span class="workout-timer" id="workout-elapsed" aria-label="Time elapsed"></span></div>
         <h1 style="font-size:28px; letter-spacing:-0.035em;">${def.label} workout</h1>
       </div>
       <button class="btn btn-sm btn-ghost" data-act="finish">End Workout</button>
@@ -5153,9 +5332,14 @@ function renderExerciseCard(entry, workout) {
         <button type="button" class="icon-btn" data-act="open-ex-options" data-exercise="${entry.exerciseId}" aria-label="Exercise options (unit, rest timer, plates, substitute)" style="flex-shrink:0;">⋯</button>
       </div>
       ${prevLines ? `<div class="ex-prev"><span class="ex-prev-label">Last time</span><div class="prev-chips">${prevLines.map((l) => `<span class="prev-chip">${escapeHtml(l)}</span>`).join("")}</div></div>` : `<div class="ex-prev text-faint">No previous data yet</div>`}
+      ${prev && prev.notes ? `<div class="ex-stall" style="border-style:solid;">Last note: ${escapeHtml(prev.notes)}</div>` : ""}
       ${next ? `<div class="ex-next"><div class="ex-next-main"><span class="ex-next-label">Next</span><span class="ex-next-val">${next.weight} ${exerciseUnit} × ${next.reps}</span></div><div class="ex-next-why">${escapeHtml(next.why)}</div></div>` : ""}
       ${stalled ? `<div class="ex-stall">No new best in the last 3 sessions. Try a lighter week or a different rep range.</div>` : ""}
       <div class="sets-list">${setsHtml}</div>
+      <div class="set-edit-row">
+        <button type="button" class="chip-btn" data-act="add-set" data-exercise="${entry.exerciseId}">+ Add set</button>
+        ${entry.sets.length > 1 ? `<button type="button" class="chip-btn" data-act="remove-set" data-exercise="${entry.exerciseId}">− Remove last set</button>` : ""}
+      </div>
       <div class="quick-row">
         ${next ? `<button class="chip-btn" data-act="use-target" data-exercise="${entry.exerciseId}">Use ${next.weight} ${exerciseUnit}</button>` : ""}
         ${prev ? `<button class="chip-btn" data-act="use-prev-weight" data-exercise="${entry.exerciseId}">Use Previous Weight</button>` : ""}
@@ -5280,23 +5464,7 @@ function renderCardioCard(phase, workout, title) {
 
 function wireActiveWorkoutEvents(container, workout, navigate) {
   // Number inputs — save on change (blur / enter), no full rerender to preserve focus elsewhere.
-  qsa('input[data-field]', container).forEach((input) => {
-    input.addEventListener("change", () => {
-      const { field, exercise, set } = input.dataset;
-      const entry = workout.exercises.find((e) => e.exerciseId === exercise);
-      const s = entry.sets[Number(set)];
-      const raw = input.value === "" ? null : Number(input.value);
-
-      if (field === "weightKg" || field === "leftWeightKg" || field === "rightWeightKg") {
-        const effectiveUnit = s.weightUnit || getExerciseUnit(cachedSettings, exercise);
-        s[field] = raw == null ? null : toStorageWeight(raw, effectiveUnit);
-        if (raw != null) s.weightUnit = effectiveUnit;
-      } else {
-        s[field] = raw;
-      }
-      queueActiveWorkoutSave(workout);
-    });
-  });
+  qsa('input[data-field]', container).forEach((input) => wireSetInput(input, workout));
 
   // Exercise options — unit, rest duration, plate calculator, substitute —
   // all consolidated behind the card's "⋯" button (see
@@ -5322,6 +5490,7 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
   qsa(".set-inputs input", container).forEach((inp) => {
     inp.addEventListener("focus", () => setTimeout(() => { try { inp.select(); } catch (_) {} }, 0));
   });
+  qsa(".exercise-card", container).forEach(wireEnterKey);
   // Toggle set completion
   qsa('[data-act="toggle-complete"]', container).forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -5337,6 +5506,7 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
       }
       if (!wasCompleted && s.completed) {
         hapticTap(10);
+        checkForPR(entry, s);
         if (restTimerShouldAutoStart()) {
           startRestTimer(getExerciseRestSeconds(cachedSettings, entry.exerciseId), `${entry.name} · Set ${Number(set) + 1}`);
         }
@@ -5368,6 +5538,48 @@ function wireActiveWorkoutEvents(container, workout, navigate) {
       updateProgressUI(container, workout);
     });
   });
+
+  // Elapsed workout time, ticking once a second while this screen is open
+  // (teardown() clears tickInterval when you leave).
+  const elapsedEl = qs("#workout-elapsed", container);
+  const paintElapsed = () => {
+    if (!elapsedEl) return;
+    const secs = Math.max(0, Math.round((Date.now() - new Date(workout.startedAt).getTime()) / 1000));
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    elapsedEl.textContent = " · " + (h ? `${h}:${String(m).padStart(2, "0")}` : String(m)) + `:${String(s).padStart(2, "0")}`;
+  };
+  stopTicking();
+  paintElapsed();
+  tickInterval = setInterval(paintElapsed, 1000);
+  acquireWakeLock();
+
+  // Add / remove a set on one exercise for this workout only. One delegated
+  // handler so it keeps working after a card is re-rendered.
+  container.onclick = async (ev) => {
+    const btn = ev.target.closest && ev.target.closest('[data-act="add-set"], [data-act="remove-set"]');
+    if (!btn) return;
+    const entry = workout.exercises.find((e) => e.exerciseId === btn.dataset.exercise);
+    if (!entry) return;
+    if (btn.dataset.act === "add-set") {
+      if (entry.sets.length >= 15) { toast("That's the maximum number of sets"); return; }
+      entry.sets.push(baseSet(entry.sets.length, entry.unilateral));
+    } else {
+      if (entry.sets.length <= 1) return;
+      const last = entry.sets[entry.sets.length - 1];
+      if (last.completed) {
+        const ok = await confirmModal({ title: "Remove a completed set?", body: "The last set is already logged. Removing it deletes what you entered for it.", confirmLabel: "Remove", danger: true });
+        if (!ok) return;
+      }
+      entry.sets.pop();
+    }
+    queueActiveWorkoutSave(workout);
+    const card = qs(`.exercise-card[data-exercise="${entry.exerciseId}"]`, container);
+    if (card) card.outerHTML = renderExerciseCard(entry, workout);
+    rewireExerciseCard(container, workout, entry.exerciseId);
+    updateProgressUI(container, workout);
+  };
 
   // Use the suggested weight / previous weight / copy previous set
   qsa('[data-act="use-target"]', container).forEach((btn) => {
@@ -5444,7 +5656,9 @@ function updateProgressUI(container, workout) {
   const fill = qs(".workout-progress-fill", container);
   if (fill) fill.style.width = pct + "%";
   const label = qs(".workout-progress-bar", container)?.nextElementSibling;
-  if (label) label.textContent = `${completed} completed · ${skipped} skipped · ${programmed} programmed sets`;
+  const volKg = workoutVolumeKg(workout);
+  const volText = volKg > 0 ? ` · ${Math.round(volKg).toLocaleString()} kg volume` : "";
+  if (label) label.textContent = `${completed} completed · ${skipped} skipped · ${programmed} programmed sets${volText}`;
 }
 
 function applyPrevious(container, workout, exerciseId, mode) {
@@ -5504,22 +5718,8 @@ function applyTarget(container, workout, exerciseId) {
 function rewireExerciseCard(container, workout, exerciseId) {
   const card = qs(`.exercise-card[data-exercise="${exerciseId}"]`, container);
   if (!card) return;
-  qsa('input[data-field]', card).forEach((input) => {
-    input.addEventListener("change", () => {
-      const { field, exercise, set } = input.dataset;
-      const entry = workout.exercises.find((e) => e.exerciseId === exercise);
-      const s = entry.sets[Number(set)];
-      const raw = input.value === "" ? null : Number(input.value);
-      if (field.toLowerCase().includes("weight")) {
-        const effectiveUnit = s.weightUnit || getExerciseUnit(cachedSettings, exercise);
-        s[field] = raw == null ? null : toStorageWeight(raw, effectiveUnit);
-        if (raw != null) s.weightUnit = effectiveUnit;
-      } else {
-        s[field] = raw;
-      }
-      queueActiveWorkoutSave(workout);
-    });
-  });
+  wireEnterKey(card);
+  qsa('input[data-field]', card).forEach((input) => wireSetInput(input, workout));
   qsa('[data-act="open-ex-options"]', card).forEach((btn) => {
     btn.addEventListener("click", () => openExerciseOptionsModal(container, workout, exerciseId));
   });
@@ -5544,6 +5744,7 @@ function rewireExerciseCard(container, workout, exerciseId) {
       if (!s.completed && !s.skipped) s.completed = true; else if (s.completed) s.completed = false;
       if (!wasCompleted && s.completed) {
         hapticTap(10);
+        checkForPR(entry, s);
         if (restTimerShouldAutoStart()) {
           startRestTimer(getExerciseRestSeconds(cachedSettings, entry.exerciseId), `${entry.name} · Set ${Number(set) + 1}`);
         }
@@ -6543,28 +6744,34 @@ async function exercisesRenderList(container, navigate, query = "") {
     }
   }
 
+  // The search box is rendered once and left alone; only the list below it is
+  // redrawn as you type. Re-rendering the whole screen on every keystroke used
+  // to destroy the input, so focus (and the keyboard) was lost after each letter.
   container.innerHTML = `
-    <input class="search-input" id="ex-search" type="text" placeholder="Search exercises…" value="${escapeHtml(query)}">
-    <div class="card">
-      ${filtered.length === 0
-        ? `<div class="empty-state"><h3>No matches</h3><p>Try a different search term.</p></div>`
-        : filtered.map((d) => `
+    <input class="search-input" id="ex-search" type="text" placeholder="Search exercises…" value="${escapeHtml(query)}" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div class="card" id="ex-list"></div>
+  `;
+
+  const paintList = (q) => {
+    const rows = q ? defs.filter((d) => d.name.toLowerCase().includes(q.toLowerCase())) : defs;
+    const listEl = qs("#ex-list", container);
+    listEl.innerHTML = rows.length === 0
+      ? `<div class="empty-state"><h3>No matches</h3><p>Try a different search term.</p></div>`
+      : rows.map((d) => `
           <div class="history-item" data-id="${d.id}" style="cursor:pointer;">
             <div class="h-body">
               <div class="h-title">${escapeHtml(d.name)} ${d.unilateral ? `<span class="badge badge-uni">Unilateral</span>` : ""}</div>
               <div class="h-meta">${escapeHtml(muscleSummaryText(d))} · ${d.sets} programmed set${d.sets > 1 ? "s" : ""}${lastPerformedByName[normalizeExerciseName(d.name)] ? ` · last ${formatDateShort(lastPerformedByName[normalizeExerciseName(d.name)])}` : ""}</div>
             </div>
             <div class="h-chevron">›</div>
-          </div>`).join("")}
-    </div>
-  `;
+          </div>`).join("");
+    qsa(".history-item", listEl).forEach((el) => {
+      el.addEventListener("click", () => navigate("exercise-detail", { exerciseId: el.dataset.id }));
+    });
+  };
+  paintList(query);
 
-  qs("#ex-search", container).addEventListener("input", (e) => {
-    exercisesRenderList(container, navigate, e.target.value);
-  });
-  qsa(".history-item", container).forEach((el) => {
-    el.addEventListener("click", () => navigate("exercise-detail", { exerciseId: el.dataset.id }));
-  });
+  qs("#ex-search", container).addEventListener("input", (e) => paintList(e.target.value));
 }
 
 let exerciseGraphRange = "monthly"; // weekly | monthly | yearly — item 10, no "All Time" option
@@ -6746,7 +6953,7 @@ function sparkline(values) {
     return `${x},${y}`;
   });
   const path = "M" + points.join(" L");
-  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">
     <path d="${path} L${w - pad},${h} L${pad},${h} Z" fill="var(--c-off)" opacity="0.06"/>
     <polyline points="${points.join(" ")}" fill="none" stroke="var(--c-off)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
   </svg>`;
@@ -7495,6 +7702,7 @@ async function settingsRender(container, navigate) {
         <button class="btn" id="export-btn">Export Backup</button>
         <button class="btn" id="import-btn">Import Backup</button>
       </div>
+      <button class="btn" id="export-csv-btn" style="margin-top:10px;">Export as CSV (spreadsheet)</button>
       <input type="file" id="import-file" accept="application/json" style="display:none;">
       <button class="btn btn-danger" id="reset-btn" style="margin-top:10px;">Reset All Data</button>
     </div>
@@ -7579,6 +7787,7 @@ async function settingsRender(container, navigate) {
   });
 
   qs("#export-btn", container).addEventListener("click", () => doExport());
+  qs("#export-csv-btn", container).addEventListener("click", () => doExportCsv());
   qs("#import-btn", container).addEventListener("click", () => qs("#import-file", container).click());
   qs("#import-file", container).addEventListener("change", (e) => doImport(e, container, navigate));
   qs("#reset-btn", container).addEventListener("click", () => doReset(container, navigate));
@@ -7672,6 +7881,47 @@ async function doExport() {
   URL.revokeObjectURL(url);
   await storage.markBackupComplete();
   toast("Backup exported");
+}
+
+// One row per completed set (two for a unilateral set: left and right), in the
+// unit each set was recorded in. Opens directly in Excel / Google Sheets.
+async function doExportCsv() {
+  const workouts = (await storage.getWorkouts()).slice().reverse();
+  const cell = (v) => {
+    const s = v == null ? "" : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const rirText = (v) => (v == null ? "" : v === "failure" ? "Failure" : v);
+  const rows = [["Date", "Workout", "Exercise", "Set", "Side", "Weight", "Unit", "Reps", "RIR"]];
+  for (const w of workouts) {
+    if (w.status === "abandoned") continue;
+    const date = dateKey(new Date(w.startedAt));
+    const typeLabel = PROGRAM[w.type]?.label || w.type;
+    for (const e of w.exercises) {
+      e.sets.forEach((s, i) => {
+        if (!s.completed) return;
+        const unit = s.weightUnit || "kg";
+        const wt = (kg) => (kg == null ? "" : roundTo(displayWeight(kg, unit), 2));
+        if (s.unilateral) {
+          rows.push([date, typeLabel, e.name, i + 1, "Left", wt(s.leftWeightKg), unit, s.leftReps ?? "", rirText(s.leftRir)]);
+          rows.push([date, typeLabel, e.name, i + 1, "Right", wt(s.rightWeightKg), unit, s.rightReps ?? "", rirText(s.rightRir)]);
+        } else {
+          rows.push([date, typeLabel, e.name, i + 1, "", wt(s.weightKg), unit, s.reps ?? "", rirText(s.rir)]);
+        }
+      });
+    }
+  }
+  if (rows.length === 1) { toast("No completed sets to export yet"); return; }
+  const csv = "﻿" + rows.map((r) => r.map(cell).join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `stimulus-sets-${nowISO().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast(`Exported ${rows.length - 1} rows`);
 }
 
 async function doImport(e, container, navigate) {
@@ -8400,13 +8650,53 @@ navButtons.forEach((btn) => {
 async function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   try {
+    // A controller already present means this is an update, not a first install.
+    const hadController = !!navigator.serviceWorker.controller;
+    let prompted = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadController || prompted) return;
+      prompted = true;
+      // Never reload on the user's behalf — they may be mid-workout.
+      toast("Stimulus was updated. Reload to use the new version.", {
+        undo: () => location.reload(), actionLabel: "Reload", duration: 20000,
+      });
+    });
     // Relative path so this works when the app is deployed under a
     // sub-path, e.g. https://username.github.io/gym-tracker/
-    await navigator.serviceWorker.register("./service-worker.js");
+    const reg = await navigator.serviceWorker.register("./service-worker.js");
+    // Installed PWAs can stay open for days; check for a new version on return.
+    let lastCheck = Date.now();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && Date.now() - lastCheck > 30 * 60 * 1000) {
+        lastCheck = Date.now();
+        reg.update().catch(() => {});
+      }
+    });
   } catch (err) {
     console.warn("[app] service worker registration failed:", err);
   }
 }
+
+// Ask the browser not to evict the offline database under storage pressure.
+async function requestPersistentStorage() {
+  try {
+    if (navigator.storage && navigator.storage.persist && !(await navigator.storage.persisted())) {
+      await navigator.storage.persist();
+    }
+  } catch (_) {}
+}
+
+// Last-resort error surfacing: log everything, tell the user at most every 15s.
+let lastErrorToastAt = 0;
+function reportUnexpectedError(kind, err) {
+  console.error(`[app] ${kind}`, err);
+  const now = Date.now();
+  if (now - lastErrorToastAt < 15000) return;
+  lastErrorToastAt = now;
+  try { toast("Something went wrong. Your logged sets are safe — if it keeps happening, reload the app.", { duration: 5000 }); } catch (_) {}
+}
+window.addEventListener("error", (e) => reportUnexpectedError("uncaught error", e.error || e.message));
+window.addEventListener("unhandledrejection", (e) => reportUnexpectedError("unhandled rejection", e.reason));
 
 // ============================================================================
 // AUTH GATE — a bare sign-in/sign-up screen shown before the app boots.
@@ -8571,6 +8861,7 @@ async function bootApp() {
   await renderRoute(route, params);
 
   registerServiceWorker();
+  requestPersistentStorage();
 }
 
 boot();
