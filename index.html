@@ -1106,6 +1106,41 @@ input, select, textarea{ font-size:16px; }
   *{ animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
 
+
+/* Region tagging + two-level volume dashboard */
+.rg-search{ width:100%; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:12px; color:var(--c-off); padding:11px 14px; margin-bottom:6px; }
+.rg-scroll{ max-height:38vh; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
+.modal-sheet .rg-scroll{ max-height:50vh; }
+.rg-group-h{ font-size:var(--fs-xs); letter-spacing:.06em; color:var(--c-off-faint); margin:14px 0 6px; }
+.rg-grid{ display:flex; flex-wrap:wrap; gap:6px; }
+.rg-btn{ min-height:40px; padding:8px 12px; border-radius:999px; border:1px solid var(--c-hairline-strong); background:transparent; color:var(--c-off-dim); font-size:var(--fs-md); display:inline-flex; gap:6px; align-items:center; text-align:left; }
+.rg-btn[data-state="1"]{ background:var(--c-off); color:var(--c-black); border-color:var(--c-off); font-weight:600; }
+.rg-btn[data-state="0.5"]{ background:var(--c-blood); color:var(--c-off); border:1px dashed var(--c-off); }
+.rg-btn[data-state="mixed"]{ color:var(--c-off); border-style:dotted; border-color:var(--c-off-dim); }
+.rg-tag{ font-size:var(--fs-xs); opacity:.8; }
+.bt-bar{ display:flex; gap:14px; align-items:center; margin:0 0 10px; font-size:var(--fs-md); }
+.bt-bar .text-faint{ margin-left:auto; }
+.bt-panel{ position:sticky; top:8px; z-index:5; background:var(--c-panel-raised); border:1px solid var(--c-hairline-strong); border-radius:20px; padding:14px; margin-bottom:14px; box-shadow:var(--shadow-lift); }
+.bt-panel[hidden]{ display:none; }
+.bt-row{ display:flex; gap:12px; align-items:center; padding:12px 0; min-height:48px; border-top:1px solid var(--c-hairline); cursor:pointer; }
+.bt-row:first-child{ border-top:0; }
+.bt-row input{ width:22px; height:22px; flex:none; accent-color:var(--c-off); }
+.bt-main{ display:flex; flex-direction:column; min-width:0; }
+.bt-name{ font-size:var(--fs-xl); overflow-wrap:anywhere; }
+.bt-sub{ font-size:var(--fs-sm); color:var(--c-off-faint); overflow-wrap:anywhere; }
+.mw-group + .mw-group{ border-top:1px solid var(--c-hairline); }
+.mw-group-btn{ display:block; width:100%; text-align:left; background:none; border:0; color:inherit; font:inherit; padding:10px 0; cursor:pointer; }
+.mw-chev{ display:inline-block; width:16px; color:var(--c-off-faint); transition:transform .22s ease; }
+.mw-group.open .mw-chev{ transform:rotate(90deg); }
+.mw-collapse{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .26s ease; }
+.mw-group.open .mw-collapse{ grid-template-rows:1fr; }
+.mw-collapse > div{ overflow:hidden; min-height:0; visibility:hidden; transition:visibility 0s .26s; }
+.mw-group.open .mw-collapse > div{ visibility:visible; transition:visibility 0s; }
+.mw-regions{ padding:0 0 8px 16px; }
+.mw-reg{ padding:6px 0; }
+.mw-reg .mw-head{ font-size:var(--fs-md); color:var(--c-off-dim); }
+.mw-reg .mw-bar{ height:5px; margin-top:5px; }
+@media (prefers-reduced-motion: reduce){ .mw-collapse, .mw-chev{ transition:none; } }
 </style>
 </head>
 <body>
@@ -1733,7 +1768,7 @@ function rebuildProgram(customList, overrides, order) {
   for (const dt of PROGRAM_DAY_TYPES) {
     const custom = list
       .filter((c) => c.type === dt.key)
-      .map((c) => ({ id: c.id, name: c.name, sets: c.sets, unilateral: !!c.unilateral, muscles: normalizeExerciseMuscles(c), custom: true }));
+      .map((c) => ({ id: c.id, name: c.name, sets: c.sets, unilateral: !!c.unilateral, muscles: normalizeExerciseMuscles(c), regions: normalizeExerciseRegions(c), custom: true }));
     const withOverrides = custom
       .filter((e) => !ov[e.id]?.removed)
       .map((e) => {
@@ -1744,6 +1779,7 @@ function rebuildProgram(customList, overrides, order) {
           ...(typeof o.sets === "number" ? { sets: o.sets } : {}),
           ...(typeof o.unilateral === "boolean" ? { unilateral: o.unilateral } : {}),
           ...(Array.isArray(o.muscles) ? { muscles: sanitizeMuscleEntries(o.muscles) } : {}),
+          ...(o.regions && typeof o.regions === "object" ? { regions: sanitizeRegions(o.regions) } : {}),
         };
       });
 
@@ -1805,25 +1841,10 @@ function exerciseMuscles(e) {
   return Array.isArray(e && e.muscles) && e.muscles.length ? e.muscles : [{ muscle: "other", areas: [] }];
 }
 
-// Per-muscle volume for a workout day type: { muscleKey: volumeSets }. Uses
-// the same set-counting rule as programVolumeSets (unilateral sets count
-// the same as bilateral sets). A muscle entry's
-// volume is weighted by its position (1.0× primary, 0.5× each additional
-// muscle) — an exercise tagged with just a muscle (no specific target area)
-// still counts fully toward that muscle. Target areas are still tracked per
-// exercise (for tagging precision) but aren't broken out here — this is
-// muscle-group volume only, on purpose, to keep the summary readable.
+// Planned volume per Group for a day type: { groupKey: sets }. Each exercise counts
+// once per Group at its highest credit (see addExerciseVolume).
 function programMuscleVolume(type) {
-  const totals = {};
-  if (!PROGRAM[type]) return totals;
-  for (const e of PROGRAM[type].exercises) {
-    const vol = exerciseVolumeSets(e);
-    exerciseMuscles(e).forEach((m, idx) => {
-      const weight = idx === 0 ? 1 : SECONDARY_MUSCLE_VOLUME_WEIGHT;
-      totals[m.muscle] = (totals[m.muscle] || 0) + vol * weight;
-    });
-  }
-  return totals;
+  return programVolume(type).groups;
 }
 
 // Same breakdown, aggregated across every day type in the current program —
@@ -1855,43 +1876,336 @@ function programMuscleVolumeWeekly(pattern) {
   return { totals, perWeek: true };
 }
 
-// Renders a simple, flat muscle-volume breakdown — one line per muscle
-// group with volume, no expandable target-area detail. Volume tracking is
-// intentionally kept to this single level so the summary stays readable.
+// Flat one-line-per-group breakdown (Program Overview).
 function muscleVolumeBreakdownHtml(totals) {
-  const lines = MUSCLE_GROUPS
-    .map((main) => ({ label: main.label, total: totals[main.key] }))
-    .filter((x) => x.total > 0);
+  const lines = REGION_GROUPS.map((g) => ({ label: g.label, total: totals[g.key] })).filter((x) => x.total > 0);
   if (!lines.length) return "";
-  return `<div style="margin-top:4px; font-size:13px;">${lines.map((x) => `<div style="padding:3px 0;">${escapeHtml(x.label)} — ${roundTo(x.total)}</div>`).join("")}</div>`;
+  return `<div style="margin-top:4px; font-size:13px;">${lines.map((x) => `<div style="padding:3px 0;">${escapeHtml(x.label)} — ${Math.round(x.total)}</div>`).join("")}</div>`;
 }
 
-// A compact one-line summary of what an exercise targets, e.g.
-// "Back (Lats, Upper Back) + Rear Delts" — used wherever an exercise is
-// listed (program overview, exercise list, exercise detail).
+// ============================================================================
+// REGION TAGGING — Exercise -> Group -> Region. An exercise carries
+// `regions: { regionKey: 1 | 0.5 }`. Regions roll up into their Group, but an
+// exercise counts ONCE per Group at its highest single credit (no double-counting).
+// ============================================================================
+const REGION_SEED = {"version":1,"credits":{"full":1.0,"half":0.5},"groups":[{"key":"chest","label":"Chest","family":"Chest","regions":[{"key":"chest_clavicular","label":"Clavicular (upper)"},{"key":"chest_sternal","label":"Sternal (mid)"},{"key":"chest_costal","label":"Costal (lower)"},{"key":"pec_minor","label":"Pectoralis minor"}]},{"key":"back","label":"Back","family":"Back","regions":[{"key":"upper_traps","label":"Upper traps"},{"key":"mid_traps","label":"Mid traps"},{"key":"lower_traps","label":"Lower traps"},{"key":"rhomboids","label":"Rhomboids"},{"key":"upper_lat","label":"Upper lat"},{"key":"mid_lat","label":"Mid lat"},{"key":"lower_lat","label":"Lower lat"},{"key":"teres","label":"Teres"},{"key":"erectors","label":"Erectors"}]},{"key":"shoulders","label":"Shoulders","family":"Shoulders","regions":[{"key":"front_delts","label":"Front delts"},{"key":"lateral_delts","label":"Lateral delts"},{"key":"rear_delts","label":"Rear delts"},{"key":"rotator_cuff","label":"Rotator cuff"},{"key":"serratus_anterior","label":"Serratus anterior"}]},{"key":"arms","label":"Arms","family":"Arms","regions":[{"key":"biceps_long","label":"Biceps long head"},{"key":"biceps_short","label":"Biceps short head"},{"key":"brachialis","label":"Brachialis"},{"key":"triceps_long","label":"Triceps long head"},{"key":"triceps_lateral","label":"Triceps lateral head"},{"key":"triceps_medial","label":"Triceps medial head"}]},{"key":"forearms","label":"Forearms","family":"Forearms","regions":[{"key":"brachioradialis","label":"Brachioradialis"},{"key":"wrist_flexors","label":"Wrist flexors"},{"key":"wrist_extensors","label":"Wrist extensors"},{"key":"finger_flexors","label":"Finger flexors (grip)"},{"key":"pronators","label":"Pronators"},{"key":"supinators","label":"Supinators"}]},{"key":"quads","label":"Quads","family":"Legs","regions":[{"key":"rectus_femoris","label":"Rectus femoris"},{"key":"vastus_lateralis","label":"Vastus lateralis"},{"key":"vastus_medialis","label":"Vastus medialis (VMO)"},{"key":"vastus_intermedius","label":"Vastus intermedius"}]},{"key":"hamstrings","label":"Hamstrings","family":"Legs","regions":[{"key":"biceps_femoris_long","label":"Biceps femoris long head"},{"key":"biceps_femoris_short","label":"Biceps femoris short head"},{"key":"semitendinosus","label":"Semitendinosus"},{"key":"semimembranosus","label":"Semimembranosus"}]},{"key":"glutes","label":"Glutes","family":"Legs","regions":[{"key":"glute_max_upper","label":"Glute max upper"},{"key":"glute_max_lower","label":"Glute max lower"},{"key":"glute_medius","label":"Glute medius"},{"key":"glute_minimus","label":"Glute minimus"}]},{"key":"calves","label":"Calves & Shins","family":"Legs","regions":[{"key":"gastroc_medial","label":"Gastrocnemius medial head"},{"key":"gastroc_lateral","label":"Gastrocnemius lateral head"},{"key":"soleus","label":"Soleus"},{"key":"tibialis_anterior","label":"Tibialis anterior"},{"key":"peroneals","label":"Peroneals"}]},{"key":"hips","label":"Hips & Thighs","family":"Legs","regions":[{"key":"adductor_magnus","label":"Adductor magnus"},{"key":"adductor_long_brevis","label":"Adductor longus/brevis"},{"key":"hip_flexors","label":"Hip flexors (iliopsoas)"},{"key":"tfl","label":"Tensor fasciae latae (TFL)"}]},{"key":"core","label":"Core","family":"Core","regions":[{"key":"upper_abs","label":"Upper abs"},{"key":"lower_abs","label":"Lower abs"},{"key":"obliques","label":"Obliques"},{"key":"transverse_abdominis","label":"Transverse abdominis"},{"key":"deep_lower_back","label":"Deep lower back (QL)"}]}]};
+const REGION_GROUPS = REGION_SEED.groups;
+const GROUP_BY_KEY = new Map();
+const REGION_BY_KEY = new Map();
+for (const g of REGION_GROUPS) {
+  GROUP_BY_KEY.set(g.key, g);
+  for (const r of g.regions) { r.group = g.key; REGION_BY_KEY.set(r.key, r); }
+}
+// A region is a slice of its group, so its target band is this fraction of the
+// per-group weekly band set in Settings (tune freely).
+const REGION_TARGET_FACTOR = 0.5;
+
+function sanitizeRegions(obj) {
+  const out = {};
+  if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+    for (const k of Object.keys(obj)) if (REGION_BY_KEY.has(k) && (obj[k] === 1 || obj[k] === 0.5)) out[k] = obj[k];
+  }
+  return out;
+}
+
+// Old taxonomy (muscle + target areas) -> regions. First muscle = 1.0, additional = 0.5,
+// matching the weighting the app used before. Muscles with no areas, and custom areas,
+// have no region equivalent and are left untagged for the user to fill in.
+const LEGACY_AREA_TO_REGIONS = {
+  chest_upper: ["chest_clavicular"], chest_mid: ["chest_sternal"], chest_lower: ["chest_costal"],
+  upper_lat: ["upper_lat"], lower_lat: ["lower_lat"], upper_back: ["mid_traps", "rhomboids"], erectors: ["erectors"],
+  front_delts: ["front_delts"], lateral_delts: ["lateral_delts"], rear_delts: ["rear_delts"],
+  biceps: ["biceps_long", "biceps_short"], brachialis: ["brachialis"],
+  triceps: ["triceps_long", "triceps_lateral", "triceps_medial"],
+  brachioradialis: ["brachioradialis"], flexors: ["wrist_flexors", "finger_flexors"], extensors: ["wrist_extensors"],
+  quads: ["rectus_femoris", "vastus_lateralis", "vastus_medialis", "vastus_intermedius"],
+  hamstring: ["biceps_femoris_long", "biceps_femoris_short", "semitendinosus", "semimembranosus"],
+  glutes: ["glute_max_upper", "glute_max_lower", "glute_medius"],
+  calves: ["gastroc_medial", "gastroc_lateral", "soleus"],
+  abs: ["upper_abs", "lower_abs"], obliques: ["obliques"],
+};
+function regionsFromLegacyMuscles(muscles) {
+  const out = {};
+  (muscles || []).forEach((m, i) => {
+    const credit = i === 0 ? 1 : 0.5;
+    for (const a of m.areas || []) for (const r of LEGACY_AREA_TO_REGIONS[a.key] || []) if (!(out[r] >= credit)) out[r] = credit;
+  });
+  return out;
+}
+function normalizeExerciseRegions(c) {
+  if (c && c.regions && typeof c.regions === "object" && !Array.isArray(c.regions)) return sanitizeRegions(c.regions);
+  return regionsFromLegacyMuscles(normalizeExerciseMuscles(c || {}));
+}
+
+// ---- Aggregation -----------------------------------------------------------
+// Per-exercise credit table, compiled once per regions object:
+// list = [[regionKey, credit]], groupMax = { groupKey: highest credit in that group }.
+const _creditCache = new WeakMap();
+function creditTable(regions) {
+  let t = _creditCache.get(regions);
+  if (t) return t;
+  const list = [], groupMax = {};
+  for (const k in regions) {
+    const r = REGION_BY_KEY.get(k);
+    if (!r) continue;
+    const c = regions[k];
+    list.push([k, c]);
+    if (c > (groupMax[r.group] || 0)) groupMax[r.group] = c;
+  }
+  t = { list, groupMax };
+  _creditCache.set(regions, t);
+  return t;
+}
+function createVolumeAcc() { return { sets: 0, groups: {}, regions: {} }; }
+
+// One exercise instance of `sets` sets. Each region gets sets x its credit; each
+// Group gets sets x the HIGHEST credit among that exercise's regions in the group.
+function addExerciseVolume(acc, regions, sets) {
+  if (!regions || !sets) return acc;
+  const t = creditTable(regions);
+  for (const [k, c] of t.list) acc.regions[k] = (acc.regions[k] || 0) + sets * c;
+  for (const g in t.groupMax) acc.groups[g] = (acc.groups[g] || 0) + sets * t.groupMax[g];
+  return acc;
+}
+function mergeVolume(into, from) {
+  into.sets += from.sets;
+  for (const k in from.groups) into.groups[k] = (into.groups[k] || 0) + from.groups[k];
+  for (const k in from.regions) into.regions[k] = (into.regions[k] || 0) + from.regions[k];
+  return into;
+}
+function mondayOf(d) {
+  const m = new Date(d);
+  m.setHours(0, 0, 0, 0);
+  m.setDate(m.getDate() - ((m.getDay() + 6) % 7));
+  return m;
+}
+function makeDefResolver() {
+  const byId = new Map(), byName = new Map();
+  for (const d of allExerciseDefs()) { byId.set(d.id, d); byName.set(normalizeExerciseName(d.name), d); }
+  return (en) => byId.get(en.exerciseId) || byName.get(normalizeExerciseName(en.name)) || null;
+}
+// Completed-set volume, bucketed in a single pass over the workouts.
+// bucket: "day" | "week" (keyed by Monday) | "all". range: { from, to } dateKeys, inclusive.
+// Returns Map(bucketKey -> { sets, groups, regions }).
+function volumeByBucket(workouts, bucket = "day", range = null) {
+  const resolve = makeDefResolver();
+  const out = new Map();
+  for (const w of workouts) {
+    if (w.status !== "completed" && w.status !== "partial") continue;
+    const d = new Date(w.startedAt);
+    const day = dateKey(d);
+    if (range && ((range.from && day < range.from) || (range.to && day > range.to))) continue;
+    const key = bucket === "week" ? dateKey(mondayOf(d)) : bucket === "all" ? "all" : day;
+    let acc = out.get(key);
+    if (!acc) { acc = createVolumeAcc(); out.set(key, acc); }
+    for (const en of w.exercises) {
+      let n = 0;
+      for (const st of en.sets) if (st.completed) n++;
+      if (!n) continue;
+      acc.sets += n;
+      const def = resolve(en);
+      if (def) addExerciseVolume(acc, def.regions, n);
+    }
+  }
+  return out;
+}
+// Planned volume for one day type of the program.
+function programVolume(type) {
+  const acc = createVolumeAcc();
+  const p = PROGRAM[type];
+  if (!p) return acc;
+  for (const e of p.exercises) {
+    const n = exerciseVolumeSets(e);
+    acc.sets += n;
+    addExerciseVolume(acc, e.regions, n);
+  }
+  return acc;
+}
+
+// ---- Display helpers -------------------------------------------------------
 function muscleSummaryText(e) {
-  return exerciseMuscles(e)
-    .map((m) => {
-      const label = muscleLabel(m.muscle);
-      const areas = (m.areas || []).map((a) => a.label);
-      return areas.length ? `${label} (${areas.join(", ")})` : label;
-    })
-    .join(" + ");
+  const by = {};
+  for (const [k, c] of creditTable(e.regions || {}).list) {
+    const r = REGION_BY_KEY.get(k);
+    (by[r.group] = by[r.group] || []).push(r.label.replace(/ \(.*\)$/, "") + (c < 1 ? " ½" : ""));
+  }
+  const parts = REGION_GROUPS.filter((g) => by[g.key]).map((g) => `${g.label} (${by[g.key].join(", ")})`);
+  return parts.length ? parts.join(" + ") : "Untagged";
+}
+function muscleChipText(e) {
+  const t = creditTable(e.regions || {});
+  const n = t.list.length;
+  if (!n) return "Tag regions";
+  const gs = REGION_GROUPS.filter((g) => t.groupMax[g.key]);
+  return `${n} region${n > 1 ? "s" : ""} · ${gs[0].label}${gs.length > 1 ? ` +${gs.length - 1}` : ""}`;
 }
 
-// A short label for the compact "Muscles" button shown on each program
-// exercise row and the Add Exercise form.
-function muscleChipText(e) {
-  const muscles = exerciseMuscles(e);
-  const primary = muscles[0];
-  const primaryLabel = muscleLabel(primary.muscle);
-  const areas = primary.areas || [];
-  let text = primaryLabel;
-  if (areas.length === 1) text += ` · ${areas[0].label}`;
-  else if (areas.length > 1) text += ` · ${areas[0].label} +${areas.length - 1}`;
-  if (muscles.length > 1) text += ` · +${muscles.length - 1} more`;
-  return text;
+// ---- Shared region picker (single-exercise modal + bulk editor panel) -------
+const regionTag = (s) => (s === "mixed" ? "~" : s === 1 ? "Full" : s === 0.5 ? "½" : "");
+const nextRegionState = (s) => (s === 1 ? 0.5 : s === 0.5 ? 0 : 1); // 0 -> 1 -> 0.5 -> 0 (mixed -> 1)
+function regionBtnHtml(key, state) {
+  return `<button type="button" class="rg-btn" data-region="${key}" data-state="${state}" aria-pressed="${state !== 0}"><span>${escapeHtml(REGION_BY_KEY.get(key).label)}</span><span class="rg-tag">${regionTag(state)}</span></button>`;
 }
+function regionPickerHtml(stateOf, query) {
+  const q = (query || "").trim().toLowerCase();
+  let html = "";
+  for (const g of REGION_GROUPS) {
+    const groupHit = !!q && (g.label.toLowerCase().includes(q) || g.family.toLowerCase().includes(q));
+    const rs = g.regions.filter((r) => !q || groupHit || r.label.toLowerCase().includes(q));
+    if (!rs.length) continue;
+    html += `<div class="rg-group-h">${escapeHtml(g.label)}</div><div class="rg-grid">${rs.map((r) => regionBtnHtml(r.key, stateOf(r.key))).join("")}</div>`;
+  }
+  return html || `<p class="text-faint" style="margin:10px 0;">No regions match “${escapeHtml(query)}”.</p>`;
+}
+function mountRegionPicker(root, { getState, onCycle }) {
+  root.innerHTML = `<input type="search" class="rg-search" placeholder="Search regions…" aria-label="Search regions" autocomplete="off"><div class="rg-scroll"></div>`;
+  const input = qs(".rg-search", root), list = qs(".rg-scroll", root);
+  const draw = () => { list.innerHTML = regionPickerHtml(getState, input.value); };
+  input.addEventListener("input", draw);
+  list.addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-region]");
+    if (!b) return;
+    onCycle(b.dataset.region);
+    const st = getState(b.dataset.region);
+    b.dataset.state = st; // update in place so scroll position and focus survive
+    b.setAttribute("aria-pressed", st !== 0);
+    b.lastElementChild.textContent = regionTag(st);
+  });
+  draw();
+  return { redraw: draw };
+}
+
+function openRegionEditorModal(initial) {
+  return new Promise((resolve) => {
+    const working = { ...sanitizeRegions(initial) };
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    modalRoot.appendChild(overlay);
+    overlay.innerHTML = `
+      <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="Tag regions">
+        <h3>What does this exercise target?</h3>
+        <p style="margin:0 0 10px; font-size:13px;">Tap a region to cycle Full (1.0) → Half (0.5) → off.</p>
+        <div id="rg-mount"></div>
+        <div class="btn-row" style="margin-top:16px;">
+          <button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button>
+          <button class="btn btn-primary" data-act="save" type="button">Save</button>
+        </div>
+      </div>`;
+    mountRegionPicker(qs("#rg-mount", overlay), {
+      getState: (k) => working[k] || 0,
+      onCycle: (k) => { const n = nextRegionState(working[k] || 0); if (n) working[k] = n; else delete working[k]; },
+    });
+    const close = (r) => { overlay.remove(); resolve(r); };
+    qs('[data-act="cancel"]', overlay).addEventListener("click", () => close(null));
+    qs('[data-act="save"]', overlay).addEventListener("click", () => close({ ...working }));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
+  });
+}
+
+// ---- Bulk editor -----------------------------------------------------------
+async function renderBulkTags(container, navigate, keepSelected) {
+  const rows = PROGRAM_DAY_TYPES.flatMap((dt) => (PROGRAM[dt.key] ? PROGRAM[dt.key].exercises : []).map((e) => ({ e, label: dt.label })));
+  const selected = new Set([...(keepSelected || [])].filter((id) => rows.some((r) => r.e.id === id)));
+  const pending = {}; // regionKey -> 1 | 0.5 | 0, only for regions the user touched
+  const picked = () => rows.filter((r) => selected.has(r.e.id)).map((r) => r.e);
+  const common = (k) => {
+    const list = picked();
+    if (!list.length) return 0;
+    const v = list[0].regions[k] || 0;
+    return list.every((e) => (e.regions[k] || 0) === v) ? v : "mixed";
+  };
+  const stateOf = (k) => (k in pending ? pending[k] : common(k));
+
+  container.innerHTML = `
+    <button class="link-btn" data-act="back">‹ Program Overview</button>
+    <h1 style="font-size:22px; margin:10px 0 6px;">Bulk Tag Regions</h1>
+    <p class="text-faint" style="margin:0 0 14px; font-size:13px;">Select exercises, then tap regions: Full counts 1.0 set, Half counts 0.5. An exercise counts once per group, at its highest credit. “~” means the selected exercises differ.</p>
+    <div class="bt-bar">
+      <button class="link-btn" data-act="all">Select all</button>
+      <button class="link-btn" data-act="none">Clear</button>
+      <span class="text-faint" id="bt-untagged"></span>
+    </div>
+    <div class="bt-panel" id="bt-panel" hidden>
+      <div class="flex-between" style="gap:8px; margin-bottom:10px;">
+        <strong id="bt-count"></strong>
+        <span style="display:flex; gap:8px;">
+          <button class="btn btn-ghost btn-sm" data-act="reset" type="button">Reset</button>
+          <button class="btn btn-primary btn-sm" data-act="apply" type="button">Apply</button>
+        </span>
+      </div>
+      <div id="bt-picker"></div>
+    </div>
+    <div class="card" id="bt-list">
+      ${rows.length ? rows.map(({ e, label }) => `
+        <label class="bt-row">
+          <input type="checkbox" data-id="${escapeHtml(e.id)}" ${selected.has(e.id) ? "checked" : ""}>
+          <span class="bt-main"><span class="bt-name">${escapeHtml(e.name)}</span>
+          <span class="bt-sub">${escapeHtml(label)} · ${escapeHtml(muscleSummaryText(e))}</span></span>
+        </label>`).join("") : `<p class="text-faint" style="margin:0;">No exercises in your program yet.</p>`}
+    </div>`;
+
+  const panel = qs("#bt-panel", container), applyBtn = qs('[data-act="apply"]', container);
+  const picker = mountRegionPicker(qs("#bt-picker", container), {
+    getState: stateOf,
+    onCycle: (k) => { pending[k] = nextRegionState(stateOf(k)); sync(); },
+  });
+  const untagged = rows.filter((r) => !Object.keys(r.e.regions).length).length;
+  qs("#bt-untagged", container).textContent = untagged ? `${untagged} untagged` : "All tagged";
+
+  function sync() {
+    const n = selected.size, t = Object.keys(pending).length;
+    panel.hidden = n === 0;
+    qs("#bt-count", container).textContent = `${n} selected`;
+    applyBtn.disabled = !t;
+    applyBtn.textContent = t ? `Apply ${t} change${t > 1 ? "s" : ""}` : "Apply";
+  }
+  sync();
+
+  qs("#bt-list", container).addEventListener("change", (ev) => {
+    const cb = ev.target.closest("input[data-id]");
+    if (!cb) return;
+    if (cb.checked) selected.add(cb.dataset.id); else selected.delete(cb.dataset.id);
+    picker.redraw();
+    sync();
+  });
+  const setAll = (on) => {
+    qsa("#bt-list input[data-id]", container).forEach((cb) => { cb.checked = on; if (on) selected.add(cb.dataset.id); else selected.delete(cb.dataset.id); });
+    picker.redraw(); sync();
+  };
+  qs('[data-act="all"]', container).addEventListener("click", () => setAll(true));
+  qs('[data-act="none"]', container).addEventListener("click", () => setAll(false));
+  qs('[data-act="reset"]', container).addEventListener("click", () => { for (const k in pending) delete pending[k]; picker.redraw(); sync(); });
+  qs('[data-act="back"]', container).addEventListener("click", () => navigate("program-overview"));
+  applyBtn.addEventListener("click", async () => {
+    const keys = Object.keys(pending);
+    if (!keys.length || !selected.size) return;
+    const patch = {};
+    for (const e of picked()) {
+      const r = { ...e.regions };
+      for (const k of keys) { if (pending[k]) r[k] = pending[k]; else delete r[k]; }
+      patch[e.id] = r;
+    }
+    await storage.bulkUpdateCustomExercises(patch);
+    applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
+    toast(`Updated ${Object.keys(patch).length} exercise${Object.keys(patch).length > 1 ? "s" : ""}`);
+    renderBulkTags(container, navigate, selected);
+  });
+}
+
+// ---- Dashboard interactions (delegated so they survive re-renders) ---------
+const expandedGroups = new Set();
+document.addEventListener("click", (ev) => {
+  const t = ev.target.closest('[data-act="toggle-group"]');
+  if (t) {
+    const g = t.dataset.group;
+    const open = !expandedGroups.has(g);
+    if (open) expandedGroups.add(g); else expandedGroups.delete(g);
+    t.setAttribute("aria-expanded", String(open));
+    t.closest(".mw-group")?.classList.toggle("open", open);
+    return;
+  }
+  if (ev.target.closest('[data-act="go-bulk"]')) navigate("bulk-tags");
+});
 
 function allExerciseDefs() {
   return PROGRAM_DAY_TYPES.flatMap((dt) => (PROGRAM[dt.key] ? PROGRAM[dt.key].exercises : []));
@@ -2832,6 +3146,16 @@ async function deleteCustomExercise(id) {
   });
 }
 
+// Set `regions` on many custom exercises in ONE write: { exerciseId: regionsObject }.
+async function bulkUpdateCustomExercises(patchById) {
+  return saving(async () => {
+    const current = await getCustomExercises();
+    const updated = current.map((e) => (patchById[e.id] ? { ...e, regions: patchById[e.id] } : e));
+    await db.put(STORES.KV, { key: KV_CUSTOM_EXERCISES, list: updated });
+    return updated;
+  });
+}
+
 // Edit a custom exercise's planned sets (or name) in place.
 async function updateCustomExercise(id, patch) {
   return saving(async () => {
@@ -3261,7 +3585,7 @@ const storage = {
   getSettings, saveSettings, getProgramState, setProgramState, getMeta,
   getWorkouts, getWorkout, saveWorkout, updateWorkout, deleteWorkout,
   getActiveWorkout, saveActiveWorkout, deleteActiveWorkout,
-  getCustomExercises, addCustomExercise, deleteCustomExercise, updateCustomExercise,
+  getCustomExercises, addCustomExercise, deleteCustomExercise, updateCustomExercise, bulkUpdateCustomExercises,
   getProgramOverrides, setProgramOverride, restoreProgramExercise,
   getProgramHistory, commitProgramPatternChange, updateCurrentVersionAnchor, deleteProgramHistoryEntry, resetProgramHistory,
   getExerciseOrder, setExerciseOrder,
@@ -3629,152 +3953,6 @@ function scheduleOverrideModal({ dateLabel, patternLetter, currentOverride, dayT
     });
   });
 }
-
-function openMuscleEditorModal(initialMuscles) {
-  return new Promise((resolve) => {
-    let working = sanitizeMuscleEntries(initialMuscles).map((m) => ({ muscle: m.muscle, areas: m.areas.map((a) => ({ ...a })) }));
-    let addingAreaForIdx = null;
-
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay";
-    modalRoot.appendChild(overlay);
-
-    function firstUnusedMuscle() {
-      const used = new Set(working.map((m) => m.muscle));
-      const next = MUSCLE_GROUPS.find((m) => !used.has(m.key) && m.key !== "other");
-      return next ? next.key : "other";
-    }
-
-    function blockHtml(m, i) {
-      const presets = targetAreaOptions(m.muscle);
-      const presetKeys = new Set(presets.map((a) => a.key));
-      const customAreas = m.areas.filter((a) => a.custom || !presetKeys.has(a.key));
-      const isChecked = (key) => m.areas.some((a) => a.key === key);
-      const areaRows = [
-        ...presets.map((a) => ({ key: a.key, label: a.label, custom: false, group: a.group || null })),
-        ...customAreas.map((a) => ({ ...a, group: null })),
-      ];
-      // Groups areas under a small header when the muscle's taxonomy defines
-      // one (e.g. Back's Lats / Upper Back / Erectors) — purely a display
-      // aid for scanning a longer list; every area still counts toward
-      // volume independently, grouped or not.
-      const groups = [];
-      const groupIndex = new Map();
-      for (const a of areaRows) {
-        const g = a.group;
-        if (!groupIndex.has(g)) { groupIndex.set(g, []); groups.push(g); }
-        groupIndex.get(g).push(a);
-      }
-      const checkboxHtml = (a) => `
-        <label style="display:flex; align-items:center; gap:9px; font-size:14px;">
-          <input type="checkbox" data-act="toggle-area" data-idx="${i}" data-key="${escapeHtml(a.key)}" data-label="${escapeHtml(a.label)}" data-custom="${a.custom ? "true" : "false"}" ${isChecked(a.key) ? "checked" : ""}>
-          ${escapeHtml(a.label)}
-        </label>`;
-      const areaListHtml = groups.map((g, gi) => `
-        ${g ? `<div class="text-faint" style="font-size:10.5px; text-transform:uppercase; letter-spacing:0.05em; margin:${gi === 0 ? "0" : "10px"} 0 2px;">${escapeHtml(g)}</div>` : ""}
-        <div style="display:flex; flex-direction:column; gap:8px;">
-          ${groupIndex.get(g).map(checkboxHtml).join("")}
-        </div>`).join("");
-      return `
-        <div class="muscle-block" style="${i > 0 ? "border-top:1px solid var(--c-hairline); margin-top:16px; padding-top:16px;" : ""}">
-          <div class="flex-between" style="align-items:center;">
-            <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--c-off-faint);">${i === 0 ? "Muscle" : "Additional Muscle"}</label>
-            ${working.length > 1 ? `<button type="button" class="link-btn" data-act="remove-muscle" data-idx="${i}" style="color:var(--c-danger); font-size:12px;">Remove</button>` : ""}
-          </div>
-          <select data-act="pick-muscle" data-idx="${i}" style="width:100%; margin-top:6px; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:10px; font-size:14px;">
-            ${MUSCLE_GROUPS.map((g) => `<option value="${g.key}" ${g.key === m.muscle ? "selected" : ""}>${escapeHtml(g.label)}</option>`).join("")}
-          </select>
-          ${areaRows.length || m.muscle !== "other" ? `
-            <div style="margin-top:12px;">
-              <label style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--c-off-faint);">Target Areas</label>
-              <div style="margin-top:8px;">${areaListHtml}</div>
-            </div>` : ""}
-          ${addingAreaForIdx === i
-            ? `<div style="display:flex; gap:6px; margin-top:10px;">
-                 <input type="text" id="new-area-input" placeholder="e.g. Rotator Cuff" style="flex:1; background:var(--c-charcoal); border:1px solid var(--c-hairline-strong); border-radius:6px; color:var(--c-off); padding:8px 10px; font-size:13px;">
-                 <button type="button" class="btn btn-primary" data-act="confirm-add-area" data-idx="${i}" style="padding:8px 14px; font-size:13px;">Add</button>
-               </div>`
-            : `<button type="button" class="link-btn" data-act="start-add-area" data-idx="${i}" style="margin-top:10px; font-size:12.5px;">+ Add Target Area</button>`}
-        </div>`;
-    }
-
-    function render() {
-      overlay.innerHTML = `
-        <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="muscle-modal-title">
-          <h3 id="muscle-modal-title">What does this exercise target?</h3>
-          <div id="muscle-blocks">${working.map(blockHtml).join("")}</div>
-          <button type="button" class="link-btn" data-act="add-muscle" style="margin-top:16px; font-size:13px;">+ Add Muscle</button>
-          <div class="btn-row" style="margin-top:20px;">
-            <button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button>
-            <button class="btn btn-primary" data-act="save" type="button">Save</button>
-          </div>
-        </div>`;
-      wire();
-      if (addingAreaForIdx !== null) qs("#new-area-input", overlay)?.focus();
-    }
-
-    function wire() {
-      qsa('[data-act="pick-muscle"]', overlay).forEach((sel) => {
-        sel.addEventListener("change", () => {
-          working[Number(sel.dataset.idx)] = { muscle: sel.value, areas: [] };
-          addingAreaForIdx = null;
-          render();
-        });
-      });
-      qsa('[data-act="toggle-area"]', overlay).forEach((cb) => {
-        cb.addEventListener("change", () => {
-          const entry = working[Number(cb.dataset.idx)];
-          const key = cb.dataset.key;
-          if (cb.checked) {
-            if (!entry.areas.some((a) => a.key === key)) entry.areas.push({ key, label: cb.dataset.label, custom: cb.dataset.custom === "true" });
-          } else {
-            entry.areas = entry.areas.filter((a) => a.key !== key);
-          }
-        });
-      });
-      qsa('[data-act="start-add-area"]', overlay).forEach((btn) => {
-        btn.addEventListener("click", () => { addingAreaForIdx = Number(btn.dataset.idx); render(); });
-      });
-      qsa('[data-act="confirm-add-area"]', overlay).forEach((btn) => {
-        const idx = Number(btn.dataset.idx);
-        const commit = () => {
-          const input = qs("#new-area-input", overlay);
-          const label = (input?.value || "").trim();
-          addingAreaForIdx = null;
-          if (!label) { render(); return; }
-          const key = `custom-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${uid().slice(0, 5)}`;
-          working[idx].areas.push({ key, label, custom: true });
-          render();
-        };
-        btn.addEventListener("click", commit);
-        qs("#new-area-input", overlay)?.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); commit(); } });
-      });
-      qsa('[data-act="remove-muscle"]', overlay).forEach((btn) => {
-        btn.addEventListener("click", () => {
-          working.splice(Number(btn.dataset.idx), 1);
-          addingAreaForIdx = null;
-          render();
-        });
-      });
-      qs('[data-act="add-muscle"]', overlay).addEventListener("click", () => {
-        working.push({ muscle: firstUnusedMuscle(), areas: [] });
-        addingAreaForIdx = null;
-        render();
-      });
-      overlay.querySelector('[data-act="cancel"]').addEventListener("click", () => close(null));
-      overlay.querySelector('[data-act="save"]').addEventListener("click", () => close(sanitizeMuscleEntries(working)));
-      overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
-    }
-
-    function close(result) {
-      overlay.remove();
-      resolve(result);
-    }
-
-    render();
-  });
-}
-
 
 // Generic single-choice picker modal, used across the Personal Schedule /
 // Day View screens wherever the user picks one option from a short list.
@@ -4212,40 +4390,26 @@ function weekStripHtml(workouts, programHistory, scheduleOverrides, skipLogs) {
     <div class="wk-caption"><span>${caption}</span><button class="link-btn" type="button" data-act="log-skip">Log skipped day</button></div>`;
 }
 
-// Sets per muscle this week (Mon–Sun): what you've done, what the schedule
-// still has planned, and the target range from Settings. Additional muscles
-// count at half weight, same as the Program Overview.
+// Sets per Group this week (Mon–Sun): done, still planned, and the target band from
+// Settings. Tap a Group to expand its Regions. An exercise counts once per Group.
 function weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, settingsData, skipLogs) {
   const lo = settingsData.weeklySetsMin || 10;
   const hi = settingsData.weeklySetsMax || 20;
+  const rlo = Math.max(1, Math.round(lo * REGION_TARGET_FACTOR));
+  const rhi = Math.max(rlo, Math.round(hi * REGION_TARGET_FACTOR));
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayKey = dateKey(today);
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  const monday = mondayOf(today);
   const mondayKey = dateKey(monday);
 
-  const defByName = new Map(allExerciseDefs().map((d) => [normalizeExerciseName(d.name), d]));
-  const done = {};
   const trainedKeys = new Set();
-  for (const w of workouts) {
-    if (w.status === "abandoned") continue;
-    const k = dateKey(new Date(w.startedAt));
-    trainedKeys.add(k);
-    if ((w.status !== "completed" && w.status !== "partial") || k < mondayKey) continue;
-    for (const entry of w.exercises) {
-      const n = entry.sets.filter((x) => x.completed).length;
-      if (!n) continue;
-      const def = findExerciseDef(entry.exerciseId) || defByName.get(normalizeExerciseName(entry.name));
-      exerciseMuscles(def || {}).forEach((m, idx) => {
-        done[m.muscle] = (done[m.muscle] || 0) + n * (idx === 0 ? 1 : SECONDARY_MUSCLE_VOLUME_WEIGHT);
-      });
-    }
-  }
+  for (const w of workouts) if (w.status !== "abandoned") trainedKeys.add(dateKey(new Date(w.startedAt)));
+  const done = volumeByBucket(workouts, "week", { from: mondayKey }).get(mondayKey) || createVolumeAcc();
 
   const skipped = new Set((skipLogs || []).map((e) => e.date));
-  const planned = {};
+  const planned = createVolumeAcc();
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
@@ -4254,38 +4418,52 @@ function weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, setti
     if (skipped.has(k)) continue;
     const t = effectiveDayTypeForDateV(d, programHistory, scheduleOverrides);
     if (!t || t === "R" || !PROGRAM[t]) continue;
-    for (const [m, v] of Object.entries(programMuscleVolume(t))) planned[m] = (planned[m] || 0) + v;
+    mergeVolume(planned, programVolume(t));
   }
 
-  const keys = [...new Set([...Object.keys(done), ...Object.keys(planned)])]
-    .sort((a, b) => ((done[b] || 0) + (planned[b] || 0)) - ((done[a] || 0) + (planned[a] || 0)))
-    .slice(0, 10);
+  const status = (v, a, b) => { const r = Math.round(v); return r < a ? "Low" : r > b ? "High" : "On target"; };
+  const bar = (d, p, a, b, label) => {
+    const max = Math.max(b * 1.25, (d + p) * 1.05, 1);
+    const pc = (v) => Math.min(100, (v / max) * 100);
+    return `<div class="mw-bar" role="img" aria-label="${escapeHtml(label)}"><span class="mw-band" style="left:${pc(a)}%; width:${pc(b) - pc(a)}%"></span><span class="mw-plan" style="left:${pc(d)}%; width:${pc(d + p) - pc(d)}%"></span><span class="mw-fill" style="width:${pc(d)}%"></span></div>`;
+  };
+  const num = (d, p, st) => `${Math.round(d)}${p ? `<span class="mw-sub">+ ${Math.round(p)} planned</span>` : ""}<span class="mw-flag">${st}</span>`;
 
-  const fmt = (v) => String(roundTo(v, 1) ?? 0);
+  const groups = REGION_GROUPS
+    .map((g) => ({ g, d: done.groups[g.key] || 0, p: planned.groups[g.key] || 0 }))
+    .filter((x) => x.d + x.p > 0)
+    .sort((a, b) => b.d + b.p - (a.d + a.p));
+
+  const untagged = allExerciseDefs().filter((d) => !Object.keys(d.regions || {}).length).length;
+  const nudge = untagged
+    ? `<div class="sc-caption" style="margin-top:10px;">${untagged} exercise${untagged === 1 ? " has" : "s have"} no region tags. <button class="link-btn" type="button" data-act="go-bulk">Bulk tag</button></div>`
+    : "";
+
   let body;
-  if (!keys.length) {
-    body = `<div class="sc-caption" style="margin-top:0;">Train this week to see your sets by muscle.</div>`;
+  if (!groups.length) {
+    body = `<div class="sc-caption" style="margin-top:0;">Train this week to see your sets by muscle.</div>${nudge}`;
   } else {
-    const maxVal = Math.max(hi * 1.25, ...keys.map((m) => ((done[m] || 0) + (planned[m] || 0)) * 1.05));
-    const pct = (v) => Math.min(100, (v / maxVal) * 100);
-    body = keys.map((m) => {
-      const d = done[m] || 0;
-      const p = planned[m] || 0;
-      const proj = d + p;
-      const flag = proj < lo ? "Low" : proj > hi ? "High" : "";
+    body = groups.map(({ g, d, p }) => {
+      const open = expandedGroups.has(g.key);
+      const regs = g.regions
+        .map((r) => ({ r, d: done.regions[r.key] || 0, p: planned.regions[r.key] || 0 }))
+        .filter((x) => x.d + x.p > 0)
+        .sort((a, b) => b.d + b.p - (a.d + a.p));
       return `
-        <div class="mw-row">
-          <div class="mw-head">
-            <span class="mw-name">${escapeHtml(muscleLabel(m))}</span>
-            <span class="mw-num">${fmt(d)}${p ? `<span class="mw-sub">+ ${fmt(p)} planned</span>` : ""}${flag ? `<span class="mw-flag">${flag}</span>` : ""}</span>
-          </div>
-          <div class="mw-bar" role="img" aria-label="${escapeHtml(muscleLabel(m))}: ${fmt(d)} sets done, ${fmt(p)} planned, target ${lo} to ${hi}">
-            <span class="mw-band" style="left:${pct(lo)}%; width:${pct(hi) - pct(lo)}%"></span>
-            <span class="mw-plan" style="left:${pct(d)}%; width:${pct(d + p) - pct(d)}%"></span>
-            <span class="mw-fill" style="width:${pct(d)}%"></span>
-          </div>
+        <div class="mw-group ${open ? "open" : ""}">
+          <button type="button" class="mw-group-btn" data-act="toggle-group" data-group="${g.key}" aria-expanded="${open}">
+            <div class="mw-head"><span class="mw-name"><span class="mw-chev" aria-hidden="true">›</span>${escapeHtml(g.label)}</span><span class="mw-num">${num(d, p, status(d + p, lo, hi))}</span></div>
+            ${bar(d, p, lo, hi, `${g.label}: ${Math.round(d)} sets done, ${Math.round(p)} planned, target ${lo} to ${hi}`)}
+          </button>
+          <div class="mw-collapse"><div><div class="mw-regions">
+            ${regs.map(({ r, d: rd, p: rp }) => `
+              <div class="mw-reg">
+                <div class="mw-head"><span>${escapeHtml(r.label)}</span><span class="mw-num">${num(rd, rp, status(rd + rp, rlo, rhi))}</span></div>
+                ${bar(rd, rp, rlo, rhi, `${r.label}: ${Math.round(rd)} sets done, ${Math.round(rp)} planned, target ${rlo} to ${rhi}`)}
+              </div>`).join("")}
+          </div></div></div>
         </div>`;
-    }).join("") + `<div class="sc-caption" style="margin-top:10px;">Shaded band is your target (${lo}–${hi} sets). Striped is what's still planned this week.</div>`;
+    }).join("") + `<div class="sc-caption" style="margin-top:10px;">Group target ${lo}–${hi} sets, region target ${rlo}–${rhi}. Each exercise counts once per group. Tap a group to expand.</div>${nudge}`;
   }
 
   return `
@@ -4480,30 +4658,14 @@ function workoutSplitCardHtml(workouts) {
   const cutoff = Date.now() - 30 * 86400000;
   const recent = workouts.filter((w) => (w.status === "completed" || w.status === "partial") && new Date(w.startedAt).getTime() >= cutoff);
   const defByName = new Map(allExerciseDefs().map((d) => [normalizeExerciseName(d.name), d]));
-  const totals = {};
-  let weightedTotal = 0;
-  let setCount = 0;
-
-  for (const w of recent) {
-    for (const entry of w.exercises) {
-      const done = entry.sets.filter((s) => s.completed).length;
-      if (!done) continue;
-      setCount += done;
-      const def = findExerciseDef(entry.exerciseId) || defByName.get(normalizeExerciseName(entry.name));
-      const muscles = def ? exerciseMuscles(def) : [{ muscle: "other", areas: [] }];
-      muscles.forEach((m, idx) => {
-        const weight = idx === 0 ? 1 : SECONDARY_MUSCLE_VOLUME_WEIGHT;
-        totals[m.muscle] = (totals[m.muscle] || 0) + done * weight;
-        weightedTotal += done * weight;
-      });
-    }
-  }
-
+  const acc = volumeByBucket(recent, "all").get("all") || createVolumeAcc();
+  const setCount = acc.sets;
+  const weightedTotal = Object.values(acc.groups).reduce((a, b) => a + b, 0);
   const perWeek = roundTo(recent.length / (30 / 7), 1) ?? 0;
-  const rows = Object.entries(totals)
+  const rows = Object.entries(acc.groups)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
-    .map(([key, val]) => ({ label: muscleLabel(key), pct: Math.round((val / weightedTotal) * 100) }));
+    .map(([key, val]) => ({ label: GROUP_BY_KEY.get(key)?.label || key, pct: Math.round((val / weightedTotal) * 100) }));
 
   const rowsHtml = rows.length
     ? `<div style="margin-top:10px;">${rows.map((r) => `
@@ -8201,11 +8363,12 @@ async function renderProgramOverview(container, navigate) {
   const overviewProgramState = await storage.getProgramState();
   const weekly = programMuscleVolumeWeekly(overviewProgramState.pattern);
   const wholeProgramMuscle = weekly.totals;
-  let newExerciseMuscles = [{ muscle: "chest", areas: [] }];
+  let newExerciseRegions = {};
 
   container.innerHTML = `
     <button class="link-btn" data-act="back">‹ Settings</button>
-    <h1 style="font-size:22px; margin:10px 0 16px;">Program Overview</h1>
+    <h1 style="font-size:22px; margin:10px 0 12px;">Program Overview</h1>
+    <button class="btn btn-sm" id="bulk-tag-btn" type="button" style="margin:0 0 16px;">Bulk Tag Regions</button>
 
     ${PROGRAM_DAY_TYPES.map((dt) => {
       const def = PROGRAM[dt.key];
@@ -8216,14 +8379,14 @@ async function renderProgramOverview(container, navigate) {
           ${muscleVolumeBreakdownHtml(programMuscleVolume(dt.key))}
         </div>`;
     }).join("")}
-    <p class="text-faint" style="margin-bottom:22px;">Use −/+ to change sets, Bi/Uni to switch between bilateral and unilateral, the Muscles button to tag what an exercise trains, or Remove to drop an exercise from future workouts. Unilateral exercises count their programmed sets the same as bilateral ones. An additional (non-primary) muscle counts at half weight, since it's worked less directly than the primary target. Historical workouts always keep what was actually performed, whatever you change here.</p>
+    <p class="text-faint" style="margin-bottom:22px;">Use −/+ to change sets, Bi/Uni to switch between bilateral and unilateral, the region button to tag what an exercise trains (or Bulk Tag Regions for many at once), or Remove to drop an exercise from future workouts. Unilateral exercises count their programmed sets the same as bilateral ones. A region tagged Half counts 0.5 of a set, and an exercise counts once per muscle group, at its highest credit. Historical workouts always keep what was actually performed, whatever you change here.</p>
 
     <div class="section-title"><h2>${weekly.perWeek ? "Weekly Volume by Muscle Group" : "Volume by Muscle Group"}</h2></div>
     <div class="card">
       ${Object.values(wholeProgramMuscle).some((v) => v > 0)
         ? muscleVolumeBreakdownHtml(wholeProgramMuscle)
         : `<p class="text-faint" style="margin:0;">Tag your exercises with a muscle below to see volume per muscle across your whole program.</p>`}
-      <p class="text-faint" style="margin:8px 0 0; font-size:12px;">${weekly.perWeek ? "Sets per week, based on how often each day type appears in your training sequence (rest days count as zero)." : "Totals across one pass through your whole split — set a training sequence in Schedule to see weekly totals."} Unilateral and bilateral sets count the same; additional muscles count at half weight.</p>
+      <p class="text-faint" style="margin:8px 0 0; font-size:12px;">${weekly.perWeek ? "Sets per week, based on how often each day type appears in your training sequence (rest days count as zero)." : "Totals across one pass through your whole split — set a training sequence in Schedule to see weekly totals."} Unilateral and bilateral sets count the same; each exercise counts once per group.</p>
     </div>
 
     <div class="section-title"><h2>Add Exercise</h2></div>
@@ -8246,7 +8409,7 @@ async function renderProgramOverview(container, navigate) {
         </div>
       </div>
       <div class="field" style="margin-bottom:0;">
-        <label>Muscles Targeted</label>
+        <label>Regions Targeted</label>
         <button type="button" class="btn" id="custom-ex-muscle-btn" style="width:100%; text-align:left;"></button>
       </div>
       <div class="field">
@@ -8357,14 +8520,16 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
     });
   });
 
+  qs("#bulk-tag-btn", container).addEventListener("click", () => navigate("bulk-tags"));
+
   qsa('[data-act="edit-muscles"]', container).forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.id;
       const def = findExerciseDef(id);
       if (!def) return;
-      const result = await openMuscleEditorModal(exerciseMuscles(def));
+      const result = await openRegionEditorModal(def.regions || {});
       if (!result) return;
-      await storage.updateCustomExercise(id, { muscles: result });
+      await storage.updateCustomExercise(id, { regions: result });
       applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
       renderProgramOverview(container, navigate);
     });
@@ -8409,13 +8574,13 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
 
   const muscleBtn = qs("#custom-ex-muscle-btn", container);
   function updateMusclePreview() {
-    muscleBtn.textContent = muscleChipText({ muscles: newExerciseMuscles });
+    muscleBtn.textContent = muscleChipText({ regions: newExerciseRegions });
   }
   updateMusclePreview();
   muscleBtn.addEventListener("click", async () => {
-    const result = await openMuscleEditorModal(newExerciseMuscles);
+    const result = await openRegionEditorModal(newExerciseRegions);
     if (result) {
-      newExerciseMuscles = result;
+      newExerciseRegions = result;
       updateMusclePreview();
     }
   });
@@ -8436,7 +8601,7 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     const id = `custom-${slug || "exercise"}-${uid().slice(0, 6)}`;
 
-    await storage.addCustomExercise({ id, name, type: selectedType, sets, unilateral: selectedUni, muscles: newExerciseMuscles, targetReps, createdAt: nowISO() });
+    await storage.addCustomExercise({ id, name, type: selectedType, sets, unilateral: selectedUni, regions: newExerciseRegions, targetReps, createdAt: nowISO() });
     applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
     toast(`${name} added to ${PROGRAM[selectedType]?.label || selectedType}`);
     renderProgramOverview(container, navigate);
@@ -8521,7 +8686,7 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
   });
 }
 
-const settings = { render: settingsRender, renderProgramOverview };
+const settings = { render: settingsRender, renderProgramOverview, renderBulkTags };
 const appEl = document.getElementById("app");
 const navButtons = qsa(".nav-btn");
 
@@ -8535,7 +8700,7 @@ function navRootFor(route) {
   if (route.startsWith("history")) return "history";
   if (route.startsWith("exercise")) return "exercises";
   if (route === "schedule") return "schedule";
-  if (route.startsWith("settings") || route === "program-overview" || route === "program-setup") return "settings";
+  if (route.startsWith("settings") || route === "program-overview" || route === "bulk-tags" || route === "program-setup") return "settings";
   return "dashboard";
 }
 
@@ -8606,6 +8771,9 @@ async function renderRoute(route, params) {
         break;
       case "program-overview":
         await settings.renderProgramOverview(appEl, navigate);
+        break;
+      case "bulk-tags":
+        await settings.renderBulkTags(appEl, navigate);
         break;
       case "program-setup":
         await programSetupModule.render(appEl, navigate);

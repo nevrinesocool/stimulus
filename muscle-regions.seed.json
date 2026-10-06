@@ -1,0 +1,310 @@
+{
+  "version": 1,
+  "credits": {
+    "full": 1.0,
+    "half": 0.5
+  },
+  "groups": [
+    {
+      "key": "chest",
+      "label": "Chest",
+      "family": "Chest",
+      "regions": [
+        {
+          "key": "chest_clavicular",
+          "label": "Clavicular (upper)"
+        },
+        {
+          "key": "chest_sternal",
+          "label": "Sternal (mid)"
+        },
+        {
+          "key": "chest_costal",
+          "label": "Costal (lower)"
+        },
+        {
+          "key": "pec_minor",
+          "label": "Pectoralis minor"
+        }
+      ]
+    },
+    {
+      "key": "back",
+      "label": "Back",
+      "family": "Back",
+      "regions": [
+        {
+          "key": "upper_traps",
+          "label": "Upper traps"
+        },
+        {
+          "key": "mid_traps",
+          "label": "Mid traps"
+        },
+        {
+          "key": "lower_traps",
+          "label": "Lower traps"
+        },
+        {
+          "key": "rhomboids",
+          "label": "Rhomboids"
+        },
+        {
+          "key": "upper_lat",
+          "label": "Upper lat"
+        },
+        {
+          "key": "mid_lat",
+          "label": "Mid lat"
+        },
+        {
+          "key": "lower_lat",
+          "label": "Lower lat"
+        },
+        {
+          "key": "teres",
+          "label": "Teres"
+        },
+        {
+          "key": "erectors",
+          "label": "Erectors"
+        }
+      ]
+    },
+    {
+      "key": "shoulders",
+      "label": "Shoulders",
+      "family": "Shoulders",
+      "regions": [
+        {
+          "key": "front_delts",
+          "label": "Front delts"
+        },
+        {
+          "key": "lateral_delts",
+          "label": "Lateral delts"
+        },
+        {
+          "key": "rear_delts",
+          "label": "Rear delts"
+        },
+        {
+          "key": "rotator_cuff",
+          "label": "Rotator cuff"
+        },
+        {
+          "key": "serratus_anterior",
+          "label": "Serratus anterior"
+        }
+      ]
+    },
+    {
+      "key": "arms",
+      "label": "Arms",
+      "family": "Arms",
+      "regions": [
+        {
+          "key": "biceps_long",
+          "label": "Biceps long head"
+        },
+        {
+          "key": "biceps_short",
+          "label": "Biceps short head"
+        },
+        {
+          "key": "brachialis",
+          "label": "Brachialis"
+        },
+        {
+          "key": "triceps_long",
+          "label": "Triceps long head"
+        },
+        {
+          "key": "triceps_lateral",
+          "label": "Triceps lateral head"
+        },
+        {
+          "key": "triceps_medial",
+          "label": "Triceps medial head"
+        }
+      ]
+    },
+    {
+      "key": "forearms",
+      "label": "Forearms",
+      "family": "Forearms",
+      "regions": [
+        {
+          "key": "brachioradialis",
+          "label": "Brachioradialis"
+        },
+        {
+          "key": "wrist_flexors",
+          "label": "Wrist flexors"
+        },
+        {
+          "key": "wrist_extensors",
+          "label": "Wrist extensors"
+        },
+        {
+          "key": "finger_flexors",
+          "label": "Finger flexors (grip)"
+        },
+        {
+          "key": "pronators",
+          "label": "Pronators"
+        },
+        {
+          "key": "supinators",
+          "label": "Supinators"
+        }
+      ]
+    },
+    {
+      "key": "quads",
+      "label": "Quads",
+      "family": "Legs",
+      "regions": [
+        {
+          "key": "rectus_femoris",
+          "label": "Rectus femoris"
+        },
+        {
+          "key": "vastus_lateralis",
+          "label": "Vastus lateralis"
+        },
+        {
+          "key": "vastus_medialis",
+          "label": "Vastus medialis (VMO)"
+        },
+        {
+          "key": "vastus_intermedius",
+          "label": "Vastus intermedius"
+        }
+      ]
+    },
+    {
+      "key": "hamstrings",
+      "label": "Hamstrings",
+      "family": "Legs",
+      "regions": [
+        {
+          "key": "biceps_femoris_long",
+          "label": "Biceps femoris long head"
+        },
+        {
+          "key": "biceps_femoris_short",
+          "label": "Biceps femoris short head"
+        },
+        {
+          "key": "semitendinosus",
+          "label": "Semitendinosus"
+        },
+        {
+          "key": "semimembranosus",
+          "label": "Semimembranosus"
+        }
+      ]
+    },
+    {
+      "key": "glutes",
+      "label": "Glutes",
+      "family": "Legs",
+      "regions": [
+        {
+          "key": "glute_max_upper",
+          "label": "Glute max upper"
+        },
+        {
+          "key": "glute_max_lower",
+          "label": "Glute max lower"
+        },
+        {
+          "key": "glute_medius",
+          "label": "Glute medius"
+        },
+        {
+          "key": "glute_minimus",
+          "label": "Glute minimus"
+        }
+      ]
+    },
+    {
+      "key": "calves",
+      "label": "Calves & Shins",
+      "family": "Legs",
+      "regions": [
+        {
+          "key": "gastroc_medial",
+          "label": "Gastrocnemius medial head"
+        },
+        {
+          "key": "gastroc_lateral",
+          "label": "Gastrocnemius lateral head"
+        },
+        {
+          "key": "soleus",
+          "label": "Soleus"
+        },
+        {
+          "key": "tibialis_anterior",
+          "label": "Tibialis anterior"
+        },
+        {
+          "key": "peroneals",
+          "label": "Peroneals"
+        }
+      ]
+    },
+    {
+      "key": "hips",
+      "label": "Hips & Thighs",
+      "family": "Legs",
+      "regions": [
+        {
+          "key": "adductor_magnus",
+          "label": "Adductor magnus"
+        },
+        {
+          "key": "adductor_long_brevis",
+          "label": "Adductor longus/brevis"
+        },
+        {
+          "key": "hip_flexors",
+          "label": "Hip flexors (iliopsoas)"
+        },
+        {
+          "key": "tfl",
+          "label": "Tensor fasciae latae (TFL)"
+        }
+      ]
+    },
+    {
+      "key": "core",
+      "label": "Core",
+      "family": "Core",
+      "regions": [
+        {
+          "key": "upper_abs",
+          "label": "Upper abs"
+        },
+        {
+          "key": "lower_abs",
+          "label": "Lower abs"
+        },
+        {
+          "key": "obliques",
+          "label": "Obliques"
+        },
+        {
+          "key": "transverse_abdominis",
+          "label": "Transverse abdominis"
+        },
+        {
+          "key": "deep_lower_back",
+          "label": "Deep lower back (QL)"
+        }
+      ]
+    }
+  ]
+}
