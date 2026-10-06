@@ -1888,7 +1888,7 @@ function muscleVolumeBreakdownHtml(totals) {
 // `regions: { regionKey: 1 | 0.5 }`. Regions roll up into their Group, but an
 // exercise counts ONCE per Group at its highest single credit (no double-counting).
 // ============================================================================
-const REGION_SEED = {"version":1,"credits":{"full":1.0,"half":0.5},"groups":[{"key":"chest","label":"Chest","family":"Chest","regions":[{"key":"chest_clavicular","label":"Clavicular (upper)"},{"key":"chest_sternal","label":"Sternal (mid)"},{"key":"chest_costal","label":"Costal (lower)"},{"key":"pec_minor","label":"Pectoralis minor"}]},{"key":"back","label":"Back","family":"Back","regions":[{"key":"upper_traps","label":"Upper traps"},{"key":"mid_traps","label":"Mid traps"},{"key":"lower_traps","label":"Lower traps"},{"key":"rhomboids","label":"Rhomboids"},{"key":"upper_lat","label":"Upper lat"},{"key":"mid_lat","label":"Mid lat"},{"key":"lower_lat","label":"Lower lat"},{"key":"teres","label":"Teres"},{"key":"erectors","label":"Erectors"}]},{"key":"shoulders","label":"Shoulders","family":"Shoulders","regions":[{"key":"front_delts","label":"Front delts"},{"key":"lateral_delts","label":"Lateral delts"},{"key":"rear_delts","label":"Rear delts"},{"key":"rotator_cuff","label":"Rotator cuff"},{"key":"serratus_anterior","label":"Serratus anterior"}]},{"key":"arms","label":"Arms","family":"Arms","regions":[{"key":"biceps_long","label":"Biceps long head"},{"key":"biceps_short","label":"Biceps short head"},{"key":"brachialis","label":"Brachialis"},{"key":"triceps_long","label":"Triceps long head"},{"key":"triceps_lateral","label":"Triceps lateral head"},{"key":"triceps_medial","label":"Triceps medial head"}]},{"key":"forearms","label":"Forearms","family":"Forearms","regions":[{"key":"brachioradialis","label":"Brachioradialis"},{"key":"wrist_flexors","label":"Wrist flexors"},{"key":"wrist_extensors","label":"Wrist extensors"},{"key":"finger_flexors","label":"Finger flexors (grip)"},{"key":"pronators","label":"Pronators"},{"key":"supinators","label":"Supinators"}]},{"key":"quads","label":"Quads","family":"Legs","regions":[{"key":"rectus_femoris","label":"Rectus femoris"},{"key":"vastus_lateralis","label":"Vastus lateralis"},{"key":"vastus_medialis","label":"Vastus medialis (VMO)"},{"key":"vastus_intermedius","label":"Vastus intermedius"}]},{"key":"hamstrings","label":"Hamstrings","family":"Legs","regions":[{"key":"biceps_femoris_long","label":"Biceps femoris long head"},{"key":"biceps_femoris_short","label":"Biceps femoris short head"},{"key":"semitendinosus","label":"Semitendinosus"},{"key":"semimembranosus","label":"Semimembranosus"}]},{"key":"glutes","label":"Glutes","family":"Legs","regions":[{"key":"glute_max_upper","label":"Glute max upper"},{"key":"glute_max_lower","label":"Glute max lower"},{"key":"glute_medius","label":"Glute medius"},{"key":"glute_minimus","label":"Glute minimus"}]},{"key":"calves","label":"Calves & Shins","family":"Legs","regions":[{"key":"gastroc_medial","label":"Gastrocnemius medial head"},{"key":"gastroc_lateral","label":"Gastrocnemius lateral head"},{"key":"soleus","label":"Soleus"},{"key":"tibialis_anterior","label":"Tibialis anterior"},{"key":"peroneals","label":"Peroneals"}]},{"key":"hips","label":"Hips & Thighs","family":"Legs","regions":[{"key":"adductor_magnus","label":"Adductor magnus"},{"key":"adductor_long_brevis","label":"Adductor longus/brevis"},{"key":"hip_flexors","label":"Hip flexors (iliopsoas)"},{"key":"tfl","label":"Tensor fasciae latae (TFL)"}]},{"key":"core","label":"Core","family":"Core","regions":[{"key":"upper_abs","label":"Upper abs"},{"key":"lower_abs","label":"Lower abs"},{"key":"obliques","label":"Obliques"},{"key":"transverse_abdominis","label":"Transverse abdominis"},{"key":"deep_lower_back","label":"Deep lower back (QL)"}]}]};
+const REGION_SEED = {"version":1,"credits":{"full":1.0,"half":0.5},"groups":[{"key":"chest","label":"Chest","family":"Chest","regions":[{"key":"chest_clavicular","label":"Clavicular (upper)"},{"key":"chest_sternal","label":"Sternal (mid)"},{"key":"chest_costal","label":"Costal (lower)"},{"key":"pec_minor","label":"Pectoralis minor"}]},{"key":"back","label":"Back","family":"Back","regions":[{"key":"upper_traps","label":"Upper traps"},{"key":"mid_traps","label":"Mid traps"},{"key":"lower_traps","label":"Lower traps"},{"key":"rhomboids","label":"Rhomboids"},{"key":"upper_lat","label":"Upper lat"},{"key":"mid_lat","label":"Mid lat"},{"key":"lower_lat","label":"Lower lat"},{"key":"teres","label":"Teres"},{"key":"erectors","label":"Erectors"}]},{"key":"shoulders","label":"Shoulders","family":"Shoulders","regions":[{"key":"front_delts","label":"Front delts"},{"key":"lateral_delts","label":"Lateral delts"},{"key":"rear_delts","label":"Rear delts"},{"key":"rotator_cuff","label":"Rotator cuff"},{"key":"serratus_anterior","label":"Serratus anterior"}]},{"key":"biceps","label":"Biceps","family":"Arms","regions":[{"key":"biceps_long","label":"Biceps long head"},{"key":"biceps_short","label":"Biceps short head"},{"key":"brachialis","label":"Brachialis"}]},{"key":"triceps","label":"Triceps","family":"Arms","regions":[{"key":"triceps_long","label":"Triceps long head"},{"key":"triceps_lateral","label":"Triceps lateral head"},{"key":"triceps_medial","label":"Triceps medial head"}]},{"key":"forearms","label":"Forearms","family":"Forearms","regions":[{"key":"brachioradialis","label":"Brachioradialis"},{"key":"wrist_flexors","label":"Wrist flexors"},{"key":"wrist_extensors","label":"Wrist extensors"},{"key":"finger_flexors","label":"Finger flexors (grip)"},{"key":"pronators","label":"Pronators"},{"key":"supinators","label":"Supinators"}]},{"key":"quads","label":"Quads","family":"Legs","regions":[{"key":"rectus_femoris","label":"Rectus femoris"},{"key":"vastus_lateralis","label":"Vastus lateralis"},{"key":"vastus_medialis","label":"Vastus medialis (VMO)"},{"key":"vastus_intermedius","label":"Vastus intermedius"}]},{"key":"hamstrings","label":"Hamstrings","family":"Legs","regions":[{"key":"biceps_femoris_long","label":"Biceps femoris long head"},{"key":"biceps_femoris_short","label":"Biceps femoris short head"},{"key":"semitendinosus","label":"Semitendinosus"},{"key":"semimembranosus","label":"Semimembranosus"}]},{"key":"glutes","label":"Glutes","family":"Legs","regions":[{"key":"glute_max_upper","label":"Glute max upper"},{"key":"glute_max_lower","label":"Glute max lower"},{"key":"glute_medius","label":"Glute medius"},{"key":"glute_minimus","label":"Glute minimus"}]},{"key":"calves","label":"Calves & Shins","family":"Legs","regions":[{"key":"gastroc_medial","label":"Gastrocnemius medial head"},{"key":"gastroc_lateral","label":"Gastrocnemius lateral head"},{"key":"soleus","label":"Soleus"},{"key":"tibialis_anterior","label":"Tibialis anterior"},{"key":"peroneals","label":"Peroneals"}]},{"key":"hips","label":"Hips & Thighs","family":"Legs","regions":[{"key":"adductor_magnus","label":"Adductor magnus"},{"key":"adductor_long_brevis","label":"Adductor longus/brevis"},{"key":"hip_flexors","label":"Hip flexors (iliopsoas)"},{"key":"tfl","label":"Tensor fasciae latae (TFL)"}]},{"key":"core","label":"Core","family":"Core","regions":[{"key":"upper_abs","label":"Upper abs"},{"key":"lower_abs","label":"Lower abs"},{"key":"obliques","label":"Obliques"},{"key":"transverse_abdominis","label":"Transverse abdominis"},{"key":"deep_lower_back","label":"Deep lower back (QL)"}]}]};
 const REGION_GROUPS = REGION_SEED.groups;
 const GROUP_BY_KEY = new Map();
 const REGION_BY_KEY = new Map();
@@ -6632,6 +6632,10 @@ async function historyRenderDetail(container, navigate, params, { editMode = fal
         ` : `<span class="text-dim" style="font-size:13px;">${entry.tempo === "improved" ? "Improved tempo/control" : "No improvement"}</span>`}
       </div>`;
     }
+    if (editMode) {
+      const curUnit = (entry.sets.find((x) => x.weightUnit) || {}).weightUnit || "kg";
+      html += `<div style="display:flex; gap:6px; align-items:center; margin-top:10px;"><span class="text-faint" style="font-size:12px;">Weight unit</span>${["kg","lb"].map((u) => `<button type="button" class="chip-btn ${curUnit === u ? "active" : ""}" data-act="hist-unit" data-exercise="${entry.exerciseId}" data-unit="${u}">${u}</button>`).join("")}</div>`;
+    }
     if (entry.notes || editMode) {
       html += `<div class="field" style="margin-top:10px; margin-bottom:0;">
         ${editMode
@@ -6642,6 +6646,9 @@ async function historyRenderDetail(container, navigate, params, { editMode = fal
     html += `</div>`;
   }
 
+  if (editMode) {
+    html += `<div style="display:flex; gap:6px; align-items:center; margin:14px 0 0;"><span class="text-faint" style="font-size:12px;">All exercises</span>${["kg","lb"].map((u) => `<button type="button" class="chip-btn ${"" === u ? "active" : ""}" data-act="hist-unit" data-exercise="*" data-unit="${u}">${u}</button>`).join("")}</div>`;
+  }
   html += renderHistCardio("pre", workout, "Pre-Workout Cardio", settings, editMode);
   html += renderHistCardio("post", workout, "Post-Workout Cardio", settings, editMode);
 
@@ -6797,6 +6804,20 @@ function renderHistCardio(phase, workout, title, settings, editMode) {
 }
 
 function wireEditHandlers(container, workout, navigate, params) {
+  // Switch the display unit of a past session's sets. Weights are stored in kg,
+  // so this only changes how they're shown and typed, never the lifted amount.
+  qsa('[data-act="hist-unit"]', container).forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const all = btn.dataset.exercise === "*";
+      for (const en of workout.exercises) {
+        if (!all && en.exerciseId !== btn.dataset.exercise) continue;
+        for (const st of en.sets) st.weightUnit = btn.dataset.unit;
+      }
+      persistEdit(workout);
+      historyRenderDetail(container, navigate, params, { editMode: true });
+    });
+  });
+
   qsa('.exercise-card', container).forEach((card, cardIdx) => {
     const entry = workout.exercises[cardIdx];
 
@@ -8145,6 +8166,7 @@ async function doReset(container, navigate) {
   settingsRender(container, navigate);
 }
 
+let progOvSettings = null;
 function renderProgramExRow(e, type, isFirst, isLast) {
   return `
     <div class="flex-between" style="padding:8px 0; border-top:1px solid var(--c-hairline); gap:8px; flex-wrap:wrap;">
@@ -8163,6 +8185,9 @@ function renderProgramExRow(e, type, isFirst, isLast) {
         <button class="link-btn" data-act="edit-reps" data-id="${e.id}" data-current="${escapeHtml(e.targetReps || "")}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;">${e.targetReps ? `× ${escapeHtml(e.targetReps)}` : "+ Reps"}</button>
         <button class="link-btn" data-act="toggle-uni" data-id="${e.id}" data-current="${!!e.unilateral}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px; margin-left:4px;">${e.unilateral ? "Uni" : "Bi"}</button>
         <button class="link-btn" data-act="edit-muscles" data-id="${e.id}" title="${escapeHtml(muscleSummaryText(e))}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;">${escapeHtml(muscleChipText(e))}</button>
+        <button class="link-btn" data-act="toggle-unit" data-id="${e.id}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;" title="Weight unit for this exercise">${getExerciseUnit(progOvSettings, e.id)}</button>
+        <button class="link-btn" data-act="cycle-rest" data-id="${e.id}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;" title="Rest timer">⏱ ${restTimerTimeLabel(getExerciseRestSeconds(progOvSettings, e.id))}</button>
+        <button class="link-btn" data-act="dup-ex" data-id="${e.id}" data-type="${type}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;">Duplicate</button>
         <button class="link-btn" data-act="remove-ex" data-id="${e.id}" style="color:var(--c-danger); font-size:12px; margin-left:6px;">Remove</button>
       </span>
     </div>`;
@@ -8360,6 +8385,7 @@ async function renderProgramOverview(container, navigate) {
     return;
   }
 
+  progOvSettings = await storage.getSettings();
   const overviewProgramState = await storage.getProgramState();
   const weekly = programMuscleVolumeWeekly(overviewProgramState.pattern);
   const wholeProgramMuscle = weekly.totals;
@@ -8368,7 +8394,12 @@ async function renderProgramOverview(container, navigate) {
   container.innerHTML = `
     <button class="link-btn" data-act="back">‹ Settings</button>
     <h1 style="font-size:22px; margin:10px 0 12px;">Program Overview</h1>
-    <button class="btn btn-sm" id="bulk-tag-btn" type="button" style="margin:0 0 16px;">Bulk Tag Regions</button>
+    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 16px;">
+      <button class="btn btn-sm" id="bulk-tag-btn" type="button">Bulk Tag Regions</button>
+      <span class="text-faint" style="font-size:12px; margin-left:auto;">All exercises:</span>
+      <button class="btn btn-sm btn-ghost" data-act="all-unit" data-unit="kg" type="button">kg</button>
+      <button class="btn btn-sm btn-ghost" data-act="all-unit" data-unit="lb" type="button">lb</button>
+    </div>
 
     ${PROGRAM_DAY_TYPES.map((dt) => {
       const def = PROGRAM[dt.key];
@@ -8379,7 +8410,7 @@ async function renderProgramOverview(container, navigate) {
           ${muscleVolumeBreakdownHtml(programMuscleVolume(dt.key))}
         </div>`;
     }).join("")}
-    <p class="text-faint" style="margin-bottom:22px;">Use −/+ to change sets, Bi/Uni to switch between bilateral and unilateral, the region button to tag what an exercise trains (or Bulk Tag Regions for many at once), or Remove to drop an exercise from future workouts. Unilateral exercises count their programmed sets the same as bilateral ones. A region tagged Half counts 0.5 of a set, and an exercise counts once per muscle group, at its highest credit. Historical workouts always keep what was actually performed, whatever you change here.</p>
+    <p class="text-faint" style="margin-bottom:22px;">Use −/+ to change sets, kg/lb for the weight unit, ⏱ to cycle rest time, Bi/Uni to switch between bilateral and unilateral, the region button to tag what an exercise trains (or Bulk Tag Regions for many at once), or Remove to drop an exercise from future workouts. Unilateral exercises count their programmed sets the same as bilateral ones. A region tagged Half counts 0.5 of a set, and an exercise counts once per muscle group, at its highest credit. Historical workouts always keep what was actually performed, whatever you change here.</p>
 
     <div class="section-title"><h2>${weekly.perWeek ? "Weekly Volume by Muscle Group" : "Volume by Muscle Group"}</h2></div>
     <div class="card">
@@ -8521,6 +8552,34 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
   });
 
   qs("#bulk-tag-btn", container).addEventListener("click", () => navigate("bulk-tags"));
+
+  const saveUnits = async (map) => { await storage.saveSettings({ exerciseUnits: map }); renderProgramOverview(container, navigate); };
+  qsa('[data-act="toggle-unit"]', container).forEach((btn) => btn.addEventListener("click", () => {
+    const cur = getExerciseUnit(progOvSettings, btn.dataset.id);
+    saveUnits({ ...(progOvSettings.exerciseUnits || {}), [btn.dataset.id]: cur === "kg" ? "lb" : "kg" });
+  }));
+  qsa('[data-act="all-unit"]', container).forEach((btn) => btn.addEventListener("click", () => {
+    const map = { ...(progOvSettings.exerciseUnits || {}) };
+    allExerciseDefs().forEach((d) => { map[d.id] = btn.dataset.unit; });
+    saveUnits(map);
+    toast(`All exercises set to ${btn.dataset.unit}`);
+  }));
+  qsa('[data-act="cycle-rest"]', container).forEach((btn) => btn.addEventListener("click", async () => {
+    const next = nextRestPreset(getExerciseRestSeconds(progOvSettings, btn.dataset.id));
+    await storage.saveSettings({ exerciseRestSeconds: { ...(progOvSettings.exerciseRestSeconds || {}), [btn.dataset.id]: next } });
+    renderProgramOverview(container, navigate);
+  }));
+  qsa('[data-act="dup-ex"]', container).forEach((btn) => btn.addEventListener("click", async () => {
+    const d = findExerciseDef(btn.dataset.id);
+    if (!d) return;
+    const id = `custom-${uid().slice(0, 10)}`;
+    await storage.addCustomExercise({ id, name: `${d.name} (copy)`, type: btn.dataset.type, sets: d.sets, unilateral: !!d.unilateral, regions: { ...d.regions }, targetReps: d.targetReps || null, createdAt: nowISO() });
+    const units = progOvSettings.exerciseUnits || {}, rests = progOvSettings.exerciseRestSeconds || {};
+    await storage.saveSettings({ exerciseUnits: { ...units, [id]: getExerciseUnit(progOvSettings, d.id) }, exerciseRestSeconds: { ...rests, ...(rests[d.id] ? { [id]: rests[d.id] } : {}) } });
+    applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
+    toast("Exercise duplicated");
+    renderProgramOverview(container, navigate);
+  }));
 
   qsa('[data-act="edit-muscles"]', container).forEach((btn) => {
     btn.addEventListener("click", async () => {

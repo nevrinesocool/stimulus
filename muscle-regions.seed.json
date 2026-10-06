@@ -99,8 +99,8 @@
       ]
     },
     {
-      "key": "arms",
-      "label": "Arms",
+      "key": "biceps",
+      "label": "Biceps",
       "family": "Arms",
       "regions": [
         {
@@ -114,7 +114,14 @@
         {
           "key": "brachialis",
           "label": "Brachialis"
-        },
+        }
+      ]
+    },
+    {
+      "key": "triceps",
+      "label": "Triceps",
+      "family": "Arms",
+      "regions": [
         {
           "key": "triceps_long",
           "label": "Triceps long head"
