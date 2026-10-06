@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<link rel="preconnect" href="https://jkjnkuiwtypywfreamrf.supabase.co" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <title>STIMULUS — Train. Track. Adapt.</title>
 <meta name="description" content="Cloud-synced strength training log and progression tracker. Train. Track. Adapt.">
@@ -1768,7 +1770,7 @@ function rebuildProgram(customList, overrides, order) {
   for (const dt of PROGRAM_DAY_TYPES) {
     const custom = list
       .filter((c) => c.type === dt.key)
-      .map((c) => ({ id: c.id, name: c.name, sets: c.sets, unilateral: !!c.unilateral, muscles: normalizeExerciseMuscles(c), regions: normalizeExerciseRegions(c), custom: true }));
+      .map((c) => ({ id: c.id, name: c.name, sets: c.sets, unilateral: !!c.unilateral, muscles: normalizeExerciseMuscles(c), regions: normalizeExerciseRegions(c), targetReps: c.targetReps || null, targetRir: c.targetRir || "", note: c.note || "", custom: true }));
     const withOverrides = custom
       .filter((e) => !ov[e.id]?.removed)
       .map((e) => {
@@ -1899,6 +1901,25 @@ for (const g of REGION_GROUPS) {
 // A region is a slice of its group, so its target band is this fraction of the
 // per-group weekly band set in Settings (tune freely).
 const REGION_TARGET_FACTOR = 0.5;
+
+// User-added regions live in settings.customRegions [{ key, label, group }] and are
+// slotted into their group alongside the built-in ones.
+function registerCustomRegions(list) {
+  for (const c of list || []) {
+    const g = GROUP_BY_KEY.get(c.group);
+    if (!g || REGION_BY_KEY.has(c.key)) continue;
+    const r = { key: c.key, label: c.label, group: g.key, custom: true };
+    g.regions.push(r);
+    REGION_BY_KEY.set(r.key, r);
+  }
+}
+async function addCustomRegion(label, groupKey) {
+  const cur = (await storage.getSettings()).customRegions || [];
+  const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  const next = [...cur, { key: `x_${slug}_${uid().slice(0, 4)}`, label, group: groupKey }];
+  await storage.saveSettings({ customRegions: next });
+  registerCustomRegions(next);
+}
 
 function sanitizeRegions(obj) {
   const out = {};
@@ -2058,10 +2079,19 @@ function regionPickerHtml(stateOf, query) {
   return html || `<p class="text-faint" style="margin:10px 0;">No regions match “${escapeHtml(query)}”.</p>`;
 }
 function mountRegionPicker(root, { getState, onCycle }) {
-  root.innerHTML = `<input type="search" class="rg-search" placeholder="Search regions…" aria-label="Search regions" autocomplete="off"><div class="rg-scroll"></div>`;
+  root.innerHTML = `<input type="search" class="rg-search" placeholder="Search regions…" aria-label="Search regions" autocomplete="off"><div class="rg-scroll"></div><button type="button" class="link-btn" data-act="add-region" style="margin-top:8px;">+ Add custom region</button>`;
   const input = qs(".rg-search", root), list = qs(".rg-scroll", root);
   const draw = () => { list.innerHTML = regionPickerHtml(getState, input.value); };
   input.addEventListener("input", draw);
+  qs('[data-act="add-region"]', root).addEventListener("click", async () => {
+    const label = (window.prompt("Region name", input.value.trim()) || "").trim();
+    if (!label) return;
+    const groupKey = await pickOptionModal({ title: "Which group is it part of?", options: REGION_GROUPS.map((g) => ({ value: g.key, label: g.label })), currentValue: null });
+    if (!groupKey) return;
+    await addCustomRegion(label, groupKey);
+    input.value = "";
+    draw();
+  });
   list.addEventListener("click", (ev) => {
     const b = ev.target.closest("[data-region]");
     if (!b) return;
@@ -2073,6 +2103,33 @@ function mountRegionPicker(root, { getState, onCycle }) {
   });
   draw();
   return { redraw: draw };
+}
+
+function openExerciseDetailsModal(def) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    modalRoot.appendChild(overlay);
+    overlay.innerHTML = `
+      <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="Exercise details">
+        <h3>${escapeHtml(def.name)}</h3>
+        <div class="field"><label>Target reps</label><input type="text" id="xd-reps" placeholder="e.g. 8-12" value="${escapeHtml(def.targetReps || "")}"></div>
+        <div class="field"><label>Target RIR</label><input type="text" id="xd-rir" placeholder="e.g. 1-2" value="${escapeHtml(def.targetRir || "")}"></div>
+        <div class="field"><label>Cue / note (shown during the workout)</label><textarea id="xd-note" rows="3" placeholder="e.g. Pause 1s at the bottom">${escapeHtml(def.note || "")}</textarea></div>
+        <div class="btn-row" style="margin-top:12px;">
+          <button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button>
+          <button class="btn btn-primary" data-act="save" type="button">Save</button>
+        </div>
+      </div>`;
+    const close = (r) => { overlay.remove(); resolve(r); };
+    qs('[data-act="cancel"]', overlay).addEventListener("click", () => close(null));
+    qs('[data-act="save"]', overlay).addEventListener("click", () => close({
+      targetReps: qs("#xd-reps", overlay).value.trim() || null,
+      targetRir: qs("#xd-rir", overlay).value.trim(),
+      note: qs("#xd-note", overlay).value.trim(),
+    }));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
+  });
 }
 
 function openRegionEditorModal(initial) {
@@ -2600,16 +2657,19 @@ const local = {
   // Keeps the queue short: a newer write to the same record replaces the older
   // one (autosave fires constantly), and a clear swallows everything before it.
   async outboxAdd(entry) {
+    let count = 0;
     await localTx(["outbox"], "readwrite", async (tx) => {
       const os = tx.objectStore("outbox");
       const all = await idbReq(os.getAll());
+      count = all.length + 1;
       for (const e of all) {
         if (e.uid !== entry.uid || e.store !== entry.store) continue;
         const same = entry.op === "clear" ? true : (e.op !== "clear" && e.record_id === entry.record_id);
-        if (same) os.delete(e.seq);
+        if (same) { os.delete(e.seq); count--; }
       }
       os.add(entry);
     });
+    return count;
   },
   async outboxRemove(seq) {
     await localTx(["outbox"], "readwrite", async (tx) => { tx.objectStore("outbox").delete(seq); });
@@ -2740,15 +2800,52 @@ async function networkReadable() {
 
 async function queueWrite(entry) {
   writeEpoch++;
-  await local.outboxAdd(entry);
-  await refreshPending();
+  pendingCount = await local.outboxAdd(entry); // count comes back from the same transaction — no second full read
+  emitSync();
   scheduleFlush(250);
+}
+
+// Local-first reads: when this phone already holds the data, return it at once and
+// refresh from the server in the background (at most every 30s per store/record).
+// The next screen shows anything that changed on another device. A missing local
+// copy still falls through to the network, exactly as before.
+const lastPull = new Map();
+function pullInBackground(key, fn) {
+  const now = Date.now();
+  if (now - (lastPull.get(key) || 0) < 30000) return;
+  lastPull.set(key, now);
+  Promise.resolve().then(fn).catch(() => {});
+}
+async function pullStore(uid, storeName) {
+  if (!(await networkReadable())) return;
+  const epoch = writeEpoch;
+  try {
+    const rows = await withTimeout(netDb.getAll(storeName), READ_TIMEOUT_MS);
+    markNetGood();
+    if (epoch === writeEpoch) { await local.replaceStore(uid, storeName, rows); dataVersion++; }
+  } catch (err) { if (isRetryable(err)) markNetBad(); }
+}
+async function pullRecord(uid, storeName, id) {
+  if (!(await networkReadable())) return;
+  const epoch = writeEpoch;
+  try {
+    const data = await withTimeout(netDb.get(storeName, id), READ_TIMEOUT_MS);
+    markNetGood();
+    if (epoch !== writeEpoch) return;
+    if (data === undefined) await local.delRow(uid, storeName, id); else await local.putRow(uid, storeName, id, data);
+    dataVersion++;
+  } catch (err) { if (isRetryable(err)) markNetBad(); }
 }
 
 const db = {
   async getAll(storeName) {
     if (localBroken) return (await netDb.getAll(storeName)).map((r) => r.data);
     const uid = await currentUserId();
+    const have = await local.allRows(uid, storeName);
+    if (have.length) {
+      pullInBackground(`${uid}|${storeName}`, () => pullStore(uid, storeName));
+      return have.map((r) => r.data);
+    }
     if (await networkReadable()) {
       const epoch = writeEpoch;
       try {
@@ -2768,6 +2865,11 @@ const db = {
     if (localBroken) return netDb.get(storeName, key);
     const uid = await currentUserId();
     const id = String(key);
+    const cachedRow = await local.getRow(uid, storeName, id);
+    if (cachedRow) {
+      pullInBackground(`${uid}|${storeName}|${id}`, () => pullRecord(uid, storeName, id));
+      return cachedRow.data;
+    }
     if (await networkReadable()) {
       const epoch = writeEpoch;
       try {
@@ -2919,11 +3021,26 @@ function emitSaveState(state) {
   for (const fn of saveListeners) fn(state);
 }
 
+// Bumps whenever stored data changes (any save, or a background refresh from the
+// server) so cached dashboard results know when to recompute.
+let dataVersion = 0;
+const memoStore = new Map();
+function memoized(name, extra, compute) {
+  const key = `${name}|${extra}`;
+  const hit = memoStore.get(key);
+  if (hit && hit.v === dataVersion) return hit.out;
+  const out = compute();
+  if (memoStore.size > 40) memoStore.clear();
+  memoStore.set(key, { v: dataVersion, out });
+  return out;
+}
+
 // Wrap every mutating call so the UI can show a "Saving… / Saved / Save failed" indicator.
 async function saving(fn) {
   emitSaveState("saving");
   try {
     const result = await fn();
+    dataVersion++;
     emitSaveState("saved");
     return result;
   } catch (err) {
@@ -3124,6 +3241,7 @@ async function deleteActiveWorkout() {
 // ---------------------------------------------------------------------------
 
 async function getCustomExercises() {
+  registerCustomRegions((await getSettings()).customRegions); // user-added regions must exist before tags are read
   const rec = await db.get(STORES.KV, KV_CUSTOM_EXERCISES);
   return rec ? rec.list : [];
 }
@@ -3143,6 +3261,14 @@ async function deleteCustomExercise(id) {
     const updated = current.filter((e) => e.id !== id);
     await db.put(STORES.KV, { key: KV_CUSTOM_EXERCISES, list: updated });
     return updated;
+  });
+}
+
+// Replace the whole custom-exercise list in ONE write (used by Paste Program).
+async function setCustomExercises(list) {
+  return saving(async () => {
+    await db.put(STORES.KV, { key: KV_CUSTOM_EXERCISES, list });
+    return list;
   });
 }
 
@@ -3585,7 +3711,7 @@ const storage = {
   getSettings, saveSettings, getProgramState, setProgramState, getMeta,
   getWorkouts, getWorkout, saveWorkout, updateWorkout, deleteWorkout,
   getActiveWorkout, saveActiveWorkout, deleteActiveWorkout,
-  getCustomExercises, addCustomExercise, deleteCustomExercise, updateCustomExercise, bulkUpdateCustomExercises,
+  getCustomExercises, addCustomExercise, deleteCustomExercise, updateCustomExercise, bulkUpdateCustomExercises, setCustomExercises,
   getProgramOverrides, setProgramOverride, restoreProgramExercise,
   getProgramHistory, commitProgramPatternChange, updateCurrentVersionAnchor, deleteProgramHistoryEntry, resetProgramHistory,
   getExerciseOrder, setExerciseOrder,
@@ -4109,8 +4235,9 @@ async function dashboardRender(container, navigate) {
 
   const suggested = todaysScheduledType(programHistory, scheduleOverrides);
   const loggedWorkouts = workouts.filter((w) => w.status !== "abandoned");
-  const streak = computeStreak(workouts);
-  const totalVolume = workouts.reduce((sum, w) => sum + workoutVolume(w), 0);
+  const dayStamp = todayDateStr();
+  const streak = memoized("streak", dayStamp, () => computeStreak(workouts));
+  const totalVolume = memoized("totalVolume", "", () => workouts.reduce((sum, w) => sum + workoutVolume(w), 0));
   const totalCardioSessions = workouts.reduce((sum, w) => {
     const pre = w.cardio?.pre?.status === "completed" ? 1 : 0;
     const post = w.cardio?.post?.status === "completed" ? 1 : 0;
@@ -4176,10 +4303,10 @@ async function dashboardRender(container, navigate) {
   // muted caption) for every number on this screen. ----
   html += `<div class="section-title"><h2>Stats</h2></div><div class="stats-grid">`;
   html += stepsCardHtml(stepLogs, settingsData);
-  html += workoutSplitCardHtml(workouts);
-  html += weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, settingsData, skipLogs);
+  html += memoized("split", dayStamp, () => workoutSplitCardHtml(workouts));
+  html += memoized("weekMuscle", dayStamp + [...expandedGroups].join(), () => weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, settingsData, skipLogs));
   html += skippedCardHtml(skipLogs, workouts);
-  html += oneRepMaxCardHtml(workouts, settingsData);
+  html += memoized("orm", dayStamp, () => oneRepMaxCardHtml(workouts, settingsData));
 
   const periodLabel = { weekly: "week", monthly: "month", yearly: "year" }[dashboardPeriodRange];
   const buckets = periodBuckets(workouts, dashboardPeriodRange, dashboardVolumeTypeFilter);
@@ -5487,6 +5614,8 @@ function renderExerciseCard(entry, workout) {
           <div class="ex-sub">
             <span>${entry.sets.length} programmed set${entry.sets.length > 1 ? "s" : ""}</span>
             ${def?.targetReps ? `<span>· target ${escapeHtml(def.targetReps)} reps</span>` : ""}
+            ${def?.targetRir ? `<span>· RIR ${escapeHtml(def.targetRir)}</span>` : ""}
+            ${def?.note ? `<span style="display:block; width:100%; margin-top:4px;">${escapeHtml(def.note)}</span>` : ""}
             <span>· ${exerciseUnit}</span>
             ${entry.unilateral ? `<span class="badge badge-uni">Unilateral</span>` : ""}
           </div>
@@ -8188,6 +8317,8 @@ function renderProgramExRow(e, type, isFirst, isLast) {
         <button class="link-btn" data-act="toggle-unit" data-id="${e.id}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;" title="Weight unit for this exercise">${getExerciseUnit(progOvSettings, e.id)}</button>
         <button class="link-btn" data-act="cycle-rest" data-id="${e.id}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;" title="Rest timer">⏱ ${restTimerTimeLabel(getExerciseRestSeconds(progOvSettings, e.id))}</button>
         <button class="link-btn" data-act="dup-ex" data-id="${e.id}" data-type="${type}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;">Duplicate</button>
+        <button class="link-btn" data-act="move-ex" data-id="${e.id}" data-type="${type}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;">Move</button>
+        <button class="link-btn" data-act="ex-details" data-id="${e.id}" style="font-size:11px; padding:3px 8px; border:1px solid var(--c-hairline-strong); border-radius:6px;">Notes${e.note || e.targetRir ? " •" : ""}</button>
         <button class="link-btn" data-act="remove-ex" data-id="${e.id}" style="color:var(--c-danger); font-size:12px; margin-left:6px;">Remove</button>
       </span>
     </div>`;
@@ -8569,11 +8700,34 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
     await storage.saveSettings({ exerciseRestSeconds: { ...(progOvSettings.exerciseRestSeconds || {}), [btn.dataset.id]: next } });
     renderProgramOverview(container, navigate);
   }));
+  qsa('[data-act="ex-details"]', container).forEach((btn) => btn.addEventListener("click", async () => {
+    const d = findExerciseDef(btn.dataset.id);
+    const result = d && (await openExerciseDetailsModal(d));
+    if (!result) return;
+    await storage.updateCustomExercise(btn.dataset.id, result);
+    applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
+    renderProgramOverview(container, navigate);
+  }));
+  qsa('[data-act="move-ex"]', container).forEach((btn) => btn.addEventListener("click", async () => {
+    const others = PROGRAM_DAY_TYPES.filter((dt) => dt.key !== btn.dataset.type);
+    if (!others.length) return;
+    const dest = await pickOptionModal({
+      title: "Move to which day?",
+      body: "Its tags, unit, rest time and history stay with it.",
+      options: others.map((dt) => ({ value: dt.key, label: dt.label })),
+      currentValue: null,
+    });
+    if (!dest) return;
+    await storage.updateCustomExercise(btn.dataset.id, { type: dest });
+    applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
+    toast("Exercise moved");
+    renderProgramOverview(container, navigate);
+  }));
   qsa('[data-act="dup-ex"]', container).forEach((btn) => btn.addEventListener("click", async () => {
     const d = findExerciseDef(btn.dataset.id);
     if (!d) return;
     const id = `custom-${uid().slice(0, 10)}`;
-    await storage.addCustomExercise({ id, name: `${d.name} (copy)`, type: btn.dataset.type, sets: d.sets, unilateral: !!d.unilateral, regions: { ...d.regions }, targetReps: d.targetReps || null, createdAt: nowISO() });
+    await storage.addCustomExercise({ id, name: `${d.name} (copy)`, type: btn.dataset.type, sets: d.sets, unilateral: !!d.unilateral, regions: { ...d.regions }, targetRir: d.targetRir || "", note: d.note || "", targetReps: d.targetReps || null, createdAt: nowISO() });
     const units = progOvSettings.exerciseUnits || {}, rests = progOvSettings.exerciseRestSeconds || {};
     await storage.saveSettings({ exerciseUnits: { ...units, [id]: getExerciseUnit(progOvSettings, d.id) }, exerciseRestSeconds: { ...rests, ...(rests[d.id] ? { [id]: rests[d.id] } : {}) } });
     applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
@@ -8718,18 +8872,16 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
     });
     if (!ok) return;
 
-    for (const c of existing) {
-      await storage.deleteCustomExercise(c.id);
-    }
     // Exercises with no "rest ..." in their line keep using the global
     // default (getExerciseRestSeconds falls back to it), so only lines
     // that actually specified a rest get an entry in this map.
     const restOverrides = {};
+    const newList = [];
     for (const dt of PROGRAM_DAY_TYPES) {
       for (const ex of (parsed[dt.key] || [])) {
         const slug = ex.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
         const id = `custom-${slug || "exercise"}-${uid().slice(0, 6)}`;
-        await storage.addCustomExercise({ id, name: ex.name, type: dt.key, sets: ex.sets, unilateral: ex.unilateral, targetReps: ex.reps || null, createdAt: nowISO() });
+        newList.push({ id, name: ex.name, type: dt.key, sets: ex.sets, unilateral: ex.unilateral, targetReps: ex.reps || null, createdAt: nowISO() });
         if (ex.restSeconds) restOverrides[id] = ex.restSeconds;
       }
     }
@@ -8737,6 +8889,7 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
     // per-exercise rest overrides (keyed to those now-gone ids) are dead
     // weight — replace the map outright rather than merging into it, even
     // when this paste didn't specify "rest" for anything.
+    await storage.setCustomExercises(newList); // replaces the old list and adds the new one in a single write
     cachedSettings.exerciseRestSeconds = restOverrides;
     await storage.saveSettings({ exerciseRestSeconds: restOverrides });
     applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());

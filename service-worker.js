@@ -2,7 +2,7 @@
 // Workout data lives in Supabase and still needs the network.
 // Bump CACHE_VERSION on every deploy; old caches are deleted on activate.
 
-const CACHE_VERSION = "v36";
+const CACHE_VERSION = "v38";
 const CACHE_NAME = `stimulus-shell-${CACHE_VERSION}`;
 
 // The app can't start without this library, so it is cached too (the page
@@ -62,10 +62,15 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return; // never touch other third-party requests (Supabase data API)
 
   if (req.mode === "navigate") {
+    // Open instantly from the cached shell, refresh it in the background.
     event.respondWith(
-      fetch(req)
-        .then((res) => { if (res.ok) putInCache("./index.html", res); return res; })
-        .catch(() => caches.match("./index.html").then((c) => c || caches.match("./")).then((c) => c || Response.error()))
+      caches.match("./index.html").then((cached) => {
+        const net = fetch(req)
+          .then((res) => { if (res.ok) putInCache("./index.html", res); return res; })
+          .catch(() => cached || caches.match("./").then((c) => c || Response.error()));
+        if (cached) { event.waitUntil(net.catch(() => {})); return cached; }
+        return net;
+      })
     );
     return;
   }
