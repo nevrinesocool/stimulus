@@ -1890,7 +1890,7 @@ function muscleVolumeBreakdownHtml(totals) {
 // `regions: { regionKey: 1 | 0.5 }`. Regions roll up into their Group, but an
 // exercise counts ONCE per Group at its highest single credit (no double-counting).
 // ============================================================================
-const REGION_SEED = {"version":1,"credits":{"full":1.0,"half":0.5},"groups":[{"key":"chest","label":"Chest","family":"Chest","regions":[{"key":"chest_clavicular","label":"Clavicular (upper)"},{"key":"chest_sternal","label":"Sternal (mid)"},{"key":"chest_costal","label":"Costal (lower)"},{"key":"pec_minor","label":"Pectoralis minor"}]},{"key":"back","label":"Back","family":"Back","regions":[{"key":"upper_traps","label":"Upper traps"},{"key":"mid_traps","label":"Mid traps"},{"key":"lower_traps","label":"Lower traps"},{"key":"rhomboids","label":"Rhomboids"},{"key":"upper_lat","label":"Upper lat"},{"key":"mid_lat","label":"Mid lat"},{"key":"lower_lat","label":"Lower lat"},{"key":"teres","label":"Teres"},{"key":"erectors","label":"Erectors"}]},{"key":"shoulders","label":"Shoulders","family":"Shoulders","regions":[{"key":"front_delts","label":"Front delts"},{"key":"lateral_delts","label":"Lateral delts"},{"key":"rear_delts","label":"Rear delts"},{"key":"rotator_cuff","label":"Rotator cuff"},{"key":"serratus_anterior","label":"Serratus anterior"}]},{"key":"biceps","label":"Biceps","family":"Arms","regions":[{"key":"biceps_long","label":"Biceps long head"},{"key":"biceps_short","label":"Biceps short head"},{"key":"brachialis","label":"Brachialis"}]},{"key":"triceps","label":"Triceps","family":"Arms","regions":[{"key":"triceps_long","label":"Triceps long head"},{"key":"triceps_lateral","label":"Triceps lateral head"},{"key":"triceps_medial","label":"Triceps medial head"}]},{"key":"forearms","label":"Forearms","family":"Forearms","regions":[{"key":"brachioradialis","label":"Brachioradialis"},{"key":"wrist_flexors","label":"Wrist flexors"},{"key":"wrist_extensors","label":"Wrist extensors"},{"key":"finger_flexors","label":"Finger flexors (grip)"},{"key":"pronators","label":"Pronators"},{"key":"supinators","label":"Supinators"}]},{"key":"quads","label":"Quads","family":"Legs","regions":[{"key":"rectus_femoris","label":"Rectus femoris"},{"key":"vastus_lateralis","label":"Vastus lateralis"},{"key":"vastus_medialis","label":"Vastus medialis (VMO)"},{"key":"vastus_intermedius","label":"Vastus intermedius"}]},{"key":"hamstrings","label":"Hamstrings","family":"Legs","regions":[{"key":"biceps_femoris_long","label":"Biceps femoris long head"},{"key":"biceps_femoris_short","label":"Biceps femoris short head"},{"key":"semitendinosus","label":"Semitendinosus"},{"key":"semimembranosus","label":"Semimembranosus"}]},{"key":"glutes","label":"Glutes","family":"Legs","regions":[{"key":"glute_max_upper","label":"Glute max upper"},{"key":"glute_max_lower","label":"Glute max lower"},{"key":"glute_medius","label":"Glute medius"},{"key":"glute_minimus","label":"Glute minimus"}]},{"key":"calves","label":"Calves & Shins","family":"Legs","regions":[{"key":"gastroc_medial","label":"Gastrocnemius medial head"},{"key":"gastroc_lateral","label":"Gastrocnemius lateral head"},{"key":"soleus","label":"Soleus"},{"key":"tibialis_anterior","label":"Tibialis anterior"},{"key":"peroneals","label":"Peroneals"}]},{"key":"hips","label":"Hips & Thighs","family":"Legs","regions":[{"key":"adductor_magnus","label":"Adductor magnus"},{"key":"adductor_long_brevis","label":"Adductor longus/brevis"},{"key":"hip_flexors","label":"Hip flexors (iliopsoas)"},{"key":"tfl","label":"Tensor fasciae latae (TFL)"}]},{"key":"core","label":"Core","family":"Core","regions":[{"key":"upper_abs","label":"Upper abs"},{"key":"lower_abs","label":"Lower abs"},{"key":"obliques","label":"Obliques"},{"key":"transverse_abdominis","label":"Transverse abdominis"},{"key":"deep_lower_back","label":"Deep lower back (QL)"}]}]};
+const REGION_SEED = {"version":2,"credits":{"full":1.0,"half":0.5},"groups":[{"key":"chest","label":"Chest","family":"Chest","regions":[{"key":"chest_clavicular","label":"Clavicular (upper)"},{"key":"chest_sternal","label":"Sternal (mid)"},{"key":"chest_costal","label":"Costal (lower)"},{"key":"pec_minor","label":"Pectoralis minor"}]},{"key":"lats","label":"Lats","family":"Back","regions":[{"key":"upper_lat","label":"Upper lat"},{"key":"mid_lat","label":"Mid lat"},{"key":"lower_lat","label":"Lower lat"},{"key":"teres","label":"Teres major"}]},{"key":"upper_back","label":"Upper Back","family":"Back","regions":[{"key":"upper_traps","label":"Upper traps"},{"key":"mid_traps","label":"Mid traps"},{"key":"lower_traps","label":"Lower traps"},{"key":"rhomboids","label":"Rhomboids"}]},{"key":"lower_back","label":"Lower Back","family":"Back","targetFactor":0.5,"regions":[{"key":"erectors","label":"Erectors"},{"key":"deep_lower_back","label":"Deep lower back"},{"key":"quadratus_lumborum","label":"Quadratus lumborum"}]},{"key":"shoulders","label":"Shoulders","family":"Shoulders","regions":[{"key":"front_delts","label":"Front delts"},{"key":"lateral_delts","label":"Lateral delts"},{"key":"rear_delts","label":"Rear delts"}]},{"key":"shoulder_stab","label":"Cuff & Scapular Stabilizers","family":"Shoulders","targetFactor":0.5,"regions":[{"key":"rotator_cuff","label":"Rotator cuff"},{"key":"serratus_anterior","label":"Serratus anterior"}]},{"key":"biceps","label":"Biceps","family":"Arms","regions":[{"key":"biceps_long","label":"Biceps long head"},{"key":"biceps_short","label":"Biceps short head"},{"key":"brachialis","label":"Brachialis"}]},{"key":"triceps","label":"Triceps","family":"Arms","regions":[{"key":"triceps_long","label":"Triceps long head"},{"key":"triceps_lateral","label":"Triceps lateral head"},{"key":"triceps_medial","label":"Triceps medial head"}]},{"key":"forearms","label":"Forearms","family":"Forearms","regions":[{"key":"brachioradialis","label":"Brachioradialis"},{"key":"wrist_flexors","label":"Wrist flexors"},{"key":"wrist_extensors","label":"Wrist extensors"},{"key":"finger_flexors","label":"Finger flexors (grip)"},{"key":"pronators","label":"Pronators"},{"key":"supinators","label":"Supinators"}]},{"key":"quads","label":"Quads","family":"Legs","regions":[{"key":"rectus_femoris","label":"Rectus femoris"},{"key":"vastus_lateralis","label":"Vastus lateralis"},{"key":"vastus_medialis","label":"Vastus medialis (VMO)"},{"key":"vastus_intermedius","label":"Vastus intermedius"}]},{"key":"hamstrings","label":"Hamstrings","family":"Legs","regions":[{"key":"biceps_femoris_long","label":"Biceps femoris long head"},{"key":"biceps_femoris_short","label":"Biceps femoris short head"},{"key":"semitendinosus","label":"Semitendinosus"},{"key":"semimembranosus","label":"Semimembranosus"}]},{"key":"glutes","label":"Glutes","family":"Legs","regions":[{"key":"glute_max_upper","label":"Glute max upper"},{"key":"glute_max_lower","label":"Glute max lower"},{"key":"glute_medius","label":"Glute medius"},{"key":"glute_minimus","label":"Glute minimus"}]},{"key":"adductors","label":"Adductors","family":"Legs","targetFactor":0.5,"regions":[{"key":"adductor_magnus","label":"Adductor magnus"},{"key":"adductor_long_brevis","label":"Adductor longus/brevis"}]},{"key":"hip_flexors","label":"Hip Flexors","family":"Legs","targetFactor":0.5,"regions":[{"key":"hip_flexors","label":"Hip flexors (iliopsoas)"},{"key":"tfl","label":"Tensor fasciae latae (TFL)"}]},{"key":"calves","label":"Calves","family":"Legs","regions":[{"key":"gastroc_medial","label":"Gastrocnemius medial head"},{"key":"gastroc_lateral","label":"Gastrocnemius lateral head"},{"key":"soleus","label":"Soleus"}]},{"key":"shins","label":"Shins & Ankles","family":"Legs","targetFactor":0.5,"regions":[{"key":"tibialis_anterior","label":"Tibialis anterior"},{"key":"peroneals","label":"Peroneals"}]},{"key":"core","label":"Core","family":"Core","regions":[{"key":"upper_abs","label":"Upper abs"},{"key":"lower_abs","label":"Lower abs"},{"key":"obliques","label":"Obliques"},{"key":"transverse_abdominis","label":"Transverse abdominis"}]}]};
 const REGION_GROUPS = REGION_SEED.groups;
 const GROUP_BY_KEY = new Map();
 const REGION_BY_KEY = new Map();
@@ -1904,9 +1904,12 @@ const REGION_TARGET_FACTOR = 0.5;
 
 // User-added regions live in settings.customRegions [{ key, label, group }] and are
 // slotted into their group alongside the built-in ones.
+// Groups that were split or renamed in seed v2. A custom region saved under an old group key
+// is slotted into the closest new group instead of being dropped.
+const GROUP_KEY_MIGRATION = { back: "upper_back", hips: "adductors" };
 function registerCustomRegions(list) {
   for (const c of list || []) {
-    const g = GROUP_BY_KEY.get(c.group);
+    const g = GROUP_BY_KEY.get(c.group) || GROUP_BY_KEY.get(GROUP_KEY_MIGRATION[c.group]);
     if (!g || REGION_BY_KEY.has(c.key)) continue;
     const r = { key: c.key, label: c.label, group: g.key, custom: true };
     g.regions.push(r);
@@ -2059,6 +2062,60 @@ function muscleChipText(e) {
   if (!n) return "Tag regions";
   const gs = REGION_GROUPS.filter((g) => t.groupMax[g.key]);
   return `${n} region${n > 1 ? "s" : ""} · ${gs[0].label}${gs.length > 1 ? ` +${gs.length - 1}` : ""}`;
+}
+
+// ---- Tag suggestions -------------------------------------------------------
+// First matching rule wins. Purely a starting point for new exercises: it only fills in
+// tags when you haven't set any, and you can edit them with one tap.
+const TAG_SUGGESTIONS = [
+  [/pull[- ]?down|pull[- ]?up|chin[- ]?up|lat pull/, { upper_lat: 1, mid_lat: 1, teres: 0.5, biceps_short: 0.5, brachialis: 0.5 }],
+  [/pullover/, { upper_lat: 1, mid_lat: 1, lower_lat: 1, teres: 0.5 }],
+  [/face pull|rear delt|reverse fly|reverse pec/, { rear_delts: 1, mid_traps: 0.5, rotator_cuff: 0.5 }],
+  [/shrug/, { upper_traps: 1 }],
+  [/row/, { mid_lat: 1, lower_lat: 0.5, rhomboids: 1, mid_traps: 1, lower_traps: 0.5, rear_delts: 0.5, biceps_short: 0.5 }],
+  [/hyper ?extension|back extension|good morning/, { erectors: 1, glute_max_lower: 0.5, semitendinosus: 0.5, semimembranosus: 0.5 }],
+  [/romanian|rdl|stiff[- ]?leg/, { semitendinosus: 1, semimembranosus: 1, biceps_femoris_long: 1, glute_max_lower: 0.5, erectors: 0.5 }],
+  [/deadlift/, { erectors: 1, glute_max_lower: 1, glute_max_upper: 0.5, biceps_femoris_long: 0.5, semitendinosus: 0.5, semimembranosus: 0.5, upper_traps: 0.5, finger_flexors: 0.5 }],
+  [/incline.*(press|bench)|(press|bench).*incline|low[- ]to[- ]high/, { chest_clavicular: 1, chest_sternal: 0.5, front_delts: 0.5, triceps_lateral: 0.5, triceps_medial: 0.5 }],
+  [/decline|dip/, { chest_costal: 1, chest_sternal: 0.5, triceps_lateral: 0.5, triceps_medial: 0.5, front_delts: 0.5 }],
+  [/bench|chest press|push[- ]?up|floor press/, { chest_sternal: 1, chest_clavicular: 0.5, chest_costal: 0.5, front_delts: 0.5, triceps_lateral: 0.5, triceps_medial: 0.5 }],
+  [/fly|flye|crossover|pec deck/, { chest_sternal: 1, chest_clavicular: 0.5, chest_costal: 0.5 }],
+  [/lateral raise|side raise|upright row/, { lateral_delts: 1 }],
+  [/front raise/, { front_delts: 1 }],
+  [/overhead press|shoulder press|military|arnold|ohp/, { front_delts: 1, lateral_delts: 0.5, triceps_lateral: 0.5, triceps_medial: 0.5 }],
+  [/overhead.*extension|french press|skull ?crusher|jm press/, { triceps_long: 1, triceps_medial: 0.5, triceps_lateral: 0.5 }],
+  [/pushdown|push down|triceps? ext|kickback|close[- ]grip/, { triceps_lateral: 1, triceps_medial: 1, triceps_long: 0.5 }],
+  [/hammer/, { brachialis: 1, brachioradialis: 1, biceps_long: 0.5 }],
+  [/reverse curl/, { brachioradialis: 1, brachialis: 0.5, wrist_extensors: 0.5 }],
+  [/wrist curl/, { wrist_flexors: 1, finger_flexors: 0.5 }],
+  [/reverse wrist|wrist extension/, { wrist_extensors: 1 }],
+  [/curl/, (n) => (/leg|ham|nordic/.test(n) ? null : { biceps_long: 1, biceps_short: 1, brachialis: 0.5 })],
+  [/leg curl|ham(string)? curl|nordic/, { biceps_femoris_long: 1, biceps_femoris_short: 1, semitendinosus: 1, semimembranosus: 1 }],
+  [/leg extension/, { rectus_femoris: 1, vastus_lateralis: 1, vastus_medialis: 1, vastus_intermedius: 1 }],
+  [/hip thrust|glute bridge|kickback glute|glute kick/, { glute_max_lower: 1, glute_max_upper: 1, biceps_femoris_long: 0.5 }],
+  [/abduct/, { glute_medius: 1, glute_minimus: 1, tfl: 0.5 }],
+  [/adduct/, { adductor_magnus: 1, adductor_long_brevis: 1 }],
+  [/lunge|split squat|step[- ]?up|bulgarian/, { vastus_lateralis: 1, vastus_medialis: 1, rectus_femoris: 0.5, glute_max_lower: 1, glute_medius: 0.5, adductor_magnus: 0.5 }],
+  [/squat|leg press|hack/, { vastus_lateralis: 1, vastus_medialis: 1, vastus_intermedius: 1, rectus_femoris: 0.5, glute_max_lower: 0.5, adductor_magnus: 0.5 }],
+  [/seated calf|soleus/, { soleus: 1 }],
+  [/calf/, { gastroc_medial: 1, gastroc_lateral: 1, soleus: 0.5 }],
+  [/tibialis|toe raise/, { tibialis_anterior: 1 }],
+  [/leg raise|knee raise|hanging/, { lower_abs: 1, upper_abs: 0.5, hip_flexors: 0.5 }],
+  [/wheel|plank|rollout|dead bug|hollow/, { upper_abs: 1, lower_abs: 0.5, transverse_abdominis: 0.5 }],
+  [/crunch|sit[- ]?up|cable crunch/, { upper_abs: 1, lower_abs: 0.5 }],
+  [/twist|woodchop|wood chop|side bend|oblique|pallof|suitcase/, { obliques: 1, transverse_abdominis: 0.5 }],
+  [/farmer|carry|grip|hang/, { finger_flexors: 1, upper_traps: 0.5 }],
+];
+function suggestRegionsFromName(name) {
+  const n = String(name || "").toLowerCase().trim();
+  if (n.length < 3) return null;
+  for (const [re, tags] of TAG_SUGGESTIONS) {
+    if (!re.test(n)) continue;
+    const t = typeof tags === "function" ? tags(n) : tags;
+    if (!t) continue;
+    return sanitizeRegions(t);
+  }
+  return null;
 }
 
 // ---- Shared region picker (single-exercise modal + bulk editor panel) -------
@@ -4522,8 +4579,14 @@ function weekStripHtml(workouts, programHistory, scheduleOverrides, skipLogs) {
 function weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, settingsData, skipLogs) {
   const lo = settingsData.weeklySetsMin || 10;
   const hi = settingsData.weeklySetsMax || 20;
-  const rlo = Math.max(1, Math.round(lo * REGION_TARGET_FACTOR));
-  const rhi = Math.max(rlo, Math.round(hi * REGION_TARGET_FACTOR));
+  // Small stabiliser groups (lower back, cuff, adductors...) carry a targetFactor < 1 in the seed so
+  // they aren't flagged "Low" against the full big-muscle band.
+  const bandFor = (g) => {
+    const f = g.targetFactor || 1;
+    const glo = Math.max(1, Math.round(lo * f)), ghi = Math.max(glo, Math.round(hi * f));
+    const rlo = Math.max(1, Math.round(glo * REGION_TARGET_FACTOR)), rhi = Math.max(rlo, Math.round(ghi * REGION_TARGET_FACTOR));
+    return { glo, ghi, rlo, rhi };
+  };
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -4566,12 +4629,21 @@ function weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, setti
     ? `<div class="sc-caption" style="margin-top:10px;">${untagged} exercise${untagged === 1 ? " has" : "s have"} no region tags. <button class="link-btn" type="button" data-act="go-bulk">Bulk tag</button></div>`
     : "";
 
+  // Groups you actually train (any exercise tagged to them) with nothing done or planned this week.
+  const trainedGroups = new Set();
+  for (const def of allExerciseDefs()) for (const [k] of creditTable(def.regions || {}).list) trainedGroups.add(REGION_BY_KEY.get(k).group);
+  const missing = REGION_GROUPS.filter((g) => trainedGroups.has(g.key) && !(done.groups[g.key] || 0) && !(planned.groups[g.key] || 0));
+  const notHit = missing.length
+    ? `<div class="sc-caption" style="margin-top:10px;"><strong>Nothing done or planned:</strong> ${missing.map((g) => escapeHtml(g.label)).join(", ")}</div>`
+    : "";
+
   let body;
   if (!groups.length) {
     body = `<div class="sc-caption" style="margin-top:0;">Train this week to see your sets by muscle.</div>${nudge}`;
   } else {
     body = groups.map(({ g, d, p }) => {
       const open = expandedGroups.has(g.key);
+      const { glo, ghi, rlo, rhi } = bandFor(g);
       const regs = g.regions
         .map((r) => ({ r, d: done.regions[r.key] || 0, p: planned.regions[r.key] || 0 }))
         .filter((x) => x.d + x.p > 0)
@@ -4579,8 +4651,8 @@ function weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, setti
       return `
         <div class="mw-group ${open ? "open" : ""}">
           <button type="button" class="mw-group-btn" data-act="toggle-group" data-group="${g.key}" aria-expanded="${open}">
-            <div class="mw-head"><span class="mw-name"><span class="mw-chev" aria-hidden="true">›</span>${escapeHtml(g.label)}</span><span class="mw-num">${num(d, p, status(d + p, lo, hi))}</span></div>
-            ${bar(d, p, lo, hi, `${g.label}: ${Math.round(d)} sets done, ${Math.round(p)} planned, target ${lo} to ${hi}`)}
+            <div class="mw-head"><span class="mw-name"><span class="mw-chev" aria-hidden="true">›</span>${escapeHtml(g.label)}</span><span class="mw-num">${num(d, p, status(d + p, glo, ghi))}</span></div>
+            ${bar(d, p, glo, ghi, `${g.label}: ${Math.round(d)} sets done, ${Math.round(p)} planned, target ${glo} to ${ghi}`)}
           </button>
           <div class="mw-collapse"><div><div class="mw-regions">
             ${regs.map(({ r, d: rd, p: rp }) => `
@@ -4590,7 +4662,7 @@ function weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, setti
               </div>`).join("")}
           </div></div></div>
         </div>`;
-    }).join("") + `<div class="sc-caption" style="margin-top:10px;">Group target ${lo}–${hi} sets, region target ${rlo}–${rhi}. Each exercise counts once per group. Tap a group to expand.</div>${nudge}`;
+    }).join("") + notHit + `<div class="sc-caption" style="margin-top:10px;">Targets are per group and per region, smaller stabiliser groups get a lighter band. Each exercise counts once per group. Tap a group to expand.</div>${nudge}`;
   }
 
   return `
@@ -8790,12 +8862,21 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
     muscleBtn.textContent = muscleChipText({ regions: newExerciseRegions });
   }
   updateMusclePreview();
+  let regionsTouched = false; // once you edit tags yourself, name-based suggestions stop overwriting them
   muscleBtn.addEventListener("click", async () => {
     const result = await openRegionEditorModal(newExerciseRegions);
     if (result) {
       newExerciseRegions = result;
+      regionsTouched = true;
       updateMusclePreview();
     }
+  });
+  qs("#custom-ex-name", container).addEventListener("input", (ev) => {
+    if (regionsTouched) return;
+    const sug = suggestRegionsFromName(ev.target.value);
+    newExerciseRegions = sug || {};
+    updateMusclePreview();
+    if (sug) muscleBtn.textContent += " · suggested";
   });
 
   qs("#custom-ex-add", container).addEventListener("click", async () => {
