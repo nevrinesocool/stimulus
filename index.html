@@ -1115,9 +1115,17 @@ input, select, textarea{ font-size:16px; }
 .modal-sheet .rg-scroll{ max-height:50vh; }
 .rg-group-h{ font-size:var(--fs-xs); letter-spacing:.06em; color:var(--c-off-faint); margin:14px 0 6px; }
 .rg-grid{ display:flex; flex-wrap:wrap; gap:6px; }
+.rg-group-h{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.rg-gset{ display:inline-flex; gap:4px; }
+.rg-gset button{ border:1px solid var(--c-hairline-strong); background:transparent; color:var(--c-off-dim); border-radius:999px; padding:3px 9px; font-size:var(--fs-xs); letter-spacing:0; }
+.rg-gset button:active{ background:var(--c-panel-raised); }
+.rg-sum{ font-size:var(--fs-sm); color:var(--c-off-dim); background:var(--c-charcoal); border-radius:var(--radius-sm); padding:8px 10px; margin:0 0 10px; min-height:20px; }
+.bt-row[hidden]{ display:none !important; }
+.rg-tools{ display:flex; gap:12px; flex-wrap:wrap; margin:0 0 8px; }
 .rg-btn{ min-height:40px; padding:8px 12px; border-radius:999px; border:1px solid var(--c-hairline-strong); background:transparent; color:var(--c-off-dim); font-size:var(--fs-md); display:inline-flex; gap:6px; align-items:center; text-align:left; }
 .rg-btn[data-state="1"]{ background:var(--c-off); color:var(--c-black); border-color:var(--c-off); font-weight:600; }
 .rg-btn[data-state="0.5"]{ background:var(--c-blood); color:var(--c-off); border:1px dashed var(--c-off); }
+.rg-btn[data-state="0.25"]{ background:transparent; color:var(--c-off); border:1px dotted var(--c-off); }
 .rg-btn[data-state="mixed"]{ color:var(--c-off); border-style:dotted; border-color:var(--c-off-dim); }
 .rg-tag{ font-size:var(--fs-xs); opacity:.8; }
 .bt-bar{ display:flex; gap:14px; align-items:center; margin:0 0 10px; font-size:var(--fs-md); }
@@ -1887,10 +1895,10 @@ function muscleVolumeBreakdownHtml(totals) {
 
 // ============================================================================
 // REGION TAGGING — Exercise -> Group -> Region. An exercise carries
-// `regions: { regionKey: 1 | 0.5 }`. Regions roll up into their Group, but an
+// `regions: { regionKey: 1 | 0.5 | 0.25 }`. Regions roll up into their Group, but an
 // exercise counts ONCE per Group at its highest single credit (no double-counting).
 // ============================================================================
-const REGION_SEED = {"version":2,"credits":{"full":1.0,"half":0.5},"groups":[{"key":"chest","label":"Chest","family":"Chest","regions":[{"key":"chest_clavicular","label":"Clavicular (upper)"},{"key":"chest_sternal","label":"Sternal (mid)"},{"key":"chest_costal","label":"Costal (lower)"},{"key":"pec_minor","label":"Pectoralis minor"}]},{"key":"lats","label":"Lats","family":"Back","regions":[{"key":"upper_lat","label":"Upper lat"},{"key":"mid_lat","label":"Mid lat"},{"key":"lower_lat","label":"Lower lat"},{"key":"teres","label":"Teres major"}]},{"key":"upper_back","label":"Upper Back","family":"Back","regions":[{"key":"upper_traps","label":"Upper traps"},{"key":"mid_traps","label":"Mid traps"},{"key":"lower_traps","label":"Lower traps"},{"key":"rhomboids","label":"Rhomboids"}]},{"key":"lower_back","label":"Lower Back","family":"Back","targetFactor":0.5,"regions":[{"key":"erectors","label":"Erectors"},{"key":"deep_lower_back","label":"Deep lower back"},{"key":"quadratus_lumborum","label":"Quadratus lumborum"}]},{"key":"shoulders","label":"Shoulders","family":"Shoulders","regions":[{"key":"front_delts","label":"Front delts"},{"key":"lateral_delts","label":"Lateral delts"},{"key":"rear_delts","label":"Rear delts"}]},{"key":"shoulder_stab","label":"Cuff & Scapular Stabilizers","family":"Shoulders","targetFactor":0.5,"regions":[{"key":"rotator_cuff","label":"Rotator cuff"},{"key":"serratus_anterior","label":"Serratus anterior"}]},{"key":"biceps","label":"Biceps","family":"Arms","regions":[{"key":"biceps_long","label":"Biceps long head"},{"key":"biceps_short","label":"Biceps short head"},{"key":"brachialis","label":"Brachialis"}]},{"key":"triceps","label":"Triceps","family":"Arms","regions":[{"key":"triceps_long","label":"Triceps long head"},{"key":"triceps_lateral","label":"Triceps lateral head"},{"key":"triceps_medial","label":"Triceps medial head"}]},{"key":"forearms","label":"Forearms","family":"Forearms","regions":[{"key":"brachioradialis","label":"Brachioradialis"},{"key":"wrist_flexors","label":"Wrist flexors"},{"key":"wrist_extensors","label":"Wrist extensors"},{"key":"finger_flexors","label":"Finger flexors (grip)"},{"key":"pronators","label":"Pronators"},{"key":"supinators","label":"Supinators"}]},{"key":"quads","label":"Quads","family":"Legs","regions":[{"key":"rectus_femoris","label":"Rectus femoris"},{"key":"vastus_lateralis","label":"Vastus lateralis"},{"key":"vastus_medialis","label":"Vastus medialis (VMO)"},{"key":"vastus_intermedius","label":"Vastus intermedius"}]},{"key":"hamstrings","label":"Hamstrings","family":"Legs","regions":[{"key":"biceps_femoris_long","label":"Biceps femoris long head"},{"key":"biceps_femoris_short","label":"Biceps femoris short head"},{"key":"semitendinosus","label":"Semitendinosus"},{"key":"semimembranosus","label":"Semimembranosus"}]},{"key":"glutes","label":"Glutes","family":"Legs","regions":[{"key":"glute_max_upper","label":"Glute max upper"},{"key":"glute_max_lower","label":"Glute max lower"},{"key":"glute_medius","label":"Glute medius"},{"key":"glute_minimus","label":"Glute minimus"}]},{"key":"adductors","label":"Adductors","family":"Legs","targetFactor":0.5,"regions":[{"key":"adductor_magnus","label":"Adductor magnus"},{"key":"adductor_long_brevis","label":"Adductor longus/brevis"}]},{"key":"hip_flexors","label":"Hip Flexors","family":"Legs","targetFactor":0.5,"regions":[{"key":"hip_flexors","label":"Hip flexors (iliopsoas)"},{"key":"tfl","label":"Tensor fasciae latae (TFL)"}]},{"key":"calves","label":"Calves","family":"Legs","regions":[{"key":"gastroc_medial","label":"Gastrocnemius medial head"},{"key":"gastroc_lateral","label":"Gastrocnemius lateral head"},{"key":"soleus","label":"Soleus"}]},{"key":"shins","label":"Shins & Ankles","family":"Legs","targetFactor":0.5,"regions":[{"key":"tibialis_anterior","label":"Tibialis anterior"},{"key":"peroneals","label":"Peroneals"}]},{"key":"core","label":"Core","family":"Core","regions":[{"key":"upper_abs","label":"Upper abs"},{"key":"lower_abs","label":"Lower abs"},{"key":"obliques","label":"Obliques"},{"key":"transverse_abdominis","label":"Transverse abdominis"}]}]};
+const REGION_SEED = {"version":2,"credits":{"full":1.0,"half":0.5,"quarter":0.25},"groups":[{"key":"chest","label":"Chest","family":"Chest","regions":[{"key":"chest_clavicular","label":"Clavicular (upper)"},{"key":"chest_sternal","label":"Sternal (mid)"},{"key":"chest_costal","label":"Costal (lower)"},{"key":"pec_minor","label":"Pectoralis minor"}]},{"key":"lats","label":"Lats","family":"Back","regions":[{"key":"upper_lat","label":"Upper lat"},{"key":"mid_lat","label":"Mid lat"},{"key":"lower_lat","label":"Lower lat"},{"key":"teres","label":"Teres major"}]},{"key":"upper_back","label":"Upper Back","family":"Back","regions":[{"key":"upper_traps","label":"Upper traps"},{"key":"mid_traps","label":"Mid traps"},{"key":"lower_traps","label":"Lower traps"},{"key":"rhomboids","label":"Rhomboids"}]},{"key":"lower_back","label":"Lower Back","family":"Back","targetFactor":0.5,"regions":[{"key":"erectors","label":"Erectors"},{"key":"deep_lower_back","label":"Deep lower back"},{"key":"quadratus_lumborum","label":"Quadratus lumborum"}]},{"key":"shoulders","label":"Shoulders","family":"Shoulders","regions":[{"key":"front_delts","label":"Front delts"},{"key":"lateral_delts","label":"Lateral delts"},{"key":"rear_delts","label":"Rear delts"}]},{"key":"shoulder_stab","label":"Cuff & Scapular Stabilizers","family":"Shoulders","targetFactor":0.5,"regions":[{"key":"rotator_cuff","label":"Rotator cuff"},{"key":"serratus_anterior","label":"Serratus anterior"}]},{"key":"biceps","label":"Biceps","family":"Arms","regions":[{"key":"biceps_long","label":"Biceps long head"},{"key":"biceps_short","label":"Biceps short head"},{"key":"brachialis","label":"Brachialis"}]},{"key":"triceps","label":"Triceps","family":"Arms","regions":[{"key":"triceps_long","label":"Triceps long head"},{"key":"triceps_lateral","label":"Triceps lateral head"},{"key":"triceps_medial","label":"Triceps medial head"}]},{"key":"forearms","label":"Forearms","family":"Forearms","regions":[{"key":"brachioradialis","label":"Brachioradialis"},{"key":"wrist_flexors","label":"Wrist flexors"},{"key":"wrist_extensors","label":"Wrist extensors"},{"key":"finger_flexors","label":"Finger flexors (grip)"},{"key":"pronators","label":"Pronators"},{"key":"supinators","label":"Supinators"}]},{"key":"quads","label":"Quads","family":"Legs","regions":[{"key":"rectus_femoris","label":"Rectus femoris"},{"key":"vastus_lateralis","label":"Vastus lateralis"},{"key":"vastus_medialis","label":"Vastus medialis (VMO)"},{"key":"vastus_intermedius","label":"Vastus intermedius"}]},{"key":"hamstrings","label":"Hamstrings","family":"Legs","regions":[{"key":"biceps_femoris_long","label":"Biceps femoris long head"},{"key":"biceps_femoris_short","label":"Biceps femoris short head"},{"key":"semitendinosus","label":"Semitendinosus"},{"key":"semimembranosus","label":"Semimembranosus"}]},{"key":"glutes","label":"Glutes","family":"Legs","regions":[{"key":"glute_max_upper","label":"Glute max upper"},{"key":"glute_max_lower","label":"Glute max lower"},{"key":"glute_medius","label":"Glute medius"},{"key":"glute_minimus","label":"Glute minimus"}]},{"key":"adductors","label":"Adductors","family":"Legs","targetFactor":0.5,"regions":[{"key":"adductor_magnus","label":"Adductor magnus"},{"key":"adductor_long_brevis","label":"Adductor longus/brevis"}]},{"key":"hip_flexors","label":"Hip Flexors","family":"Legs","targetFactor":0.5,"regions":[{"key":"hip_flexors","label":"Hip flexors (iliopsoas)"},{"key":"tfl","label":"Tensor fasciae latae (TFL)"}]},{"key":"calves","label":"Calves","family":"Legs","regions":[{"key":"gastroc_medial","label":"Gastrocnemius medial head"},{"key":"gastroc_lateral","label":"Gastrocnemius lateral head"},{"key":"soleus","label":"Soleus"}]},{"key":"shins","label":"Shins & Ankles","family":"Legs","targetFactor":0.5,"regions":[{"key":"tibialis_anterior","label":"Tibialis anterior"},{"key":"peroneals","label":"Peroneals"}]},{"key":"core","label":"Core","family":"Core","regions":[{"key":"upper_abs","label":"Upper abs"},{"key":"lower_abs","label":"Lower abs"},{"key":"obliques","label":"Obliques"},{"key":"transverse_abdominis","label":"Transverse abdominis"}]}]};
 const REGION_GROUPS = REGION_SEED.groups;
 const GROUP_BY_KEY = new Map();
 const REGION_BY_KEY = new Map();
@@ -1927,7 +1935,7 @@ async function addCustomRegion(label, groupKey) {
 function sanitizeRegions(obj) {
   const out = {};
   if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-    for (const k of Object.keys(obj)) if (REGION_BY_KEY.has(k) && (obj[k] === 1 || obj[k] === 0.5)) out[k] = obj[k];
+    for (const k of Object.keys(obj)) if (REGION_BY_KEY.has(k) && (obj[k] === 1 || obj[k] === 0.5 || obj[k] === 0.25)) out[k] = obj[k];
   }
   return out;
 }
@@ -2011,6 +2019,30 @@ function makeDefResolver() {
 // Completed-set volume, bucketed in a single pass over the workouts.
 // bucket: "day" | "week" (keyed by Monday) | "all". range: { from, to } dateKeys, inclusive.
 // Returns Map(bucketKey -> { sets, groups, regions }).
+// "Hard sets only": completed sets logged at or above the RIR cutoff count at half credit
+// (or not at all). Sets with no RIR logged always count in full. Config comes from Settings.
+let hardSetCfg = { cutoff: null, mode: "half" };
+function applyHardSetConfig(s) {
+  const c = Number(s && s.hardSetMinRir);
+  hardSetCfg = { cutoff: Number.isFinite(c) && c > 0 ? c : null, mode: s && s.hardSetMode === "none" ? "none" : "half" };
+}
+// The RIR that decides a set: for unilateral sets the harder (lower) logged side.
+function setRirForVolume(s) {
+  const raw = s.unilateral ? [s.leftRir, s.rightRir] : [s.rir];
+  const nums = raw.map(rirNumber).filter((v) => v != null);
+  return nums.length ? Math.min(...nums) : null;
+}
+function setVolumeFactor(s) {
+  if (hardSetCfg.cutoff == null) return 1;
+  const r = setRirForVolume(s);
+  if (r == null || r < hardSetCfg.cutoff) return 1;
+  return hardSetCfg.mode === "none" ? 0 : 0.5;
+}
+function hardSetCaption() {
+  if (hardSetCfg.cutoff == null) return "";
+  const lbl = hardSetCfg.cutoff >= 3 ? "2+" : String(hardSetCfg.cutoff);
+  return ` Hard sets only is on: sets logged at RIR ${lbl} or easier ${hardSetCfg.mode === "none" ? "don't count" : "count as half a set"}. Sets with no RIR logged count in full.`;
+}
 function volumeByBucket(workouts, bucket = "day", range = null) {
   const resolve = makeDefResolver();
   const out = new Map();
@@ -2024,7 +2056,7 @@ function volumeByBucket(workouts, bucket = "day", range = null) {
     if (!acc) { acc = createVolumeAcc(); out.set(key, acc); }
     for (const en of w.exercises) {
       let n = 0;
-      for (const st of en.sets) if (st.completed) n++;
+      for (const st of en.sets) if (st.completed) n += setVolumeFactor(st);
       if (!n) continue;
       acc.sets += n;
       const def = resolve(en);
@@ -2051,7 +2083,7 @@ function muscleSummaryText(e) {
   const by = {};
   for (const [k, c] of creditTable(e.regions || {}).list) {
     const r = REGION_BY_KEY.get(k);
-    (by[r.group] = by[r.group] || []).push(r.label.replace(/ \(.*\)$/, "") + (c < 1 ? " ½" : ""));
+    (by[r.group] = by[r.group] || []).push(r.label.replace(/ \(.*\)$/, "") + (c === 0.25 ? " ¼" : c < 1 ? " ½" : ""));
   }
   const parts = REGION_GROUPS.filter((g) => by[g.key]).map((g) => `${g.label} (${by[g.key].join(", ")})`);
   return parts.length ? parts.join(" + ") : "Untagged";
@@ -2119,26 +2151,47 @@ function suggestRegionsFromName(name) {
 }
 
 // ---- Shared region picker (single-exercise modal + bulk editor panel) -------
-const regionTag = (s) => (s === "mixed" ? "~" : s === 1 ? "Full" : s === 0.5 ? "½" : "");
-const nextRegionState = (s) => (s === 1 ? 0.5 : s === 0.5 ? 0 : 1); // 0 -> 1 -> 0.5 -> 0 (mixed -> 1)
+const regionTag = (s) => (s === "mixed" ? "~" : s === 1 ? "Full" : s === 0.5 ? "½" : s === 0.25 ? "¼" : "");
+const nextRegionState = (s) => (s === 1 ? 0.5 : s === 0.5 ? 0.25 : s === 0.25 ? 0 : 1); // 0 -> 1 -> 0.5 -> 0.25 -> 0 (mixed -> 1)
 function regionBtnHtml(key, state) {
   return `<button type="button" class="rg-btn" data-region="${key}" data-state="${state}" aria-pressed="${state !== 0}"><span>${escapeHtml(REGION_BY_KEY.get(key).label)}</span><span class="rg-tag">${regionTag(state)}</span></button>`;
 }
-function regionPickerHtml(stateOf, query) {
+// The 5 most recently tapped regions, newest first, kept in localStorage (per device, no account sync).
+const RECENT_REGIONS_KEY = "stimulus.recentRegions.v1";
+function getRecentRegions() {
+  try {
+    const list = JSON.parse(localStorage.getItem(RECENT_REGIONS_KEY) || "[]");
+    return Array.isArray(list) ? list.filter((k) => typeof k === "string" && REGION_BY_KEY.has(k)).slice(0, 5) : [];
+  } catch (_) { return []; }
+}
+function pushRecentRegion(key) {
+  try {
+    const next = [key, ...getRecentRegions().filter((k) => k !== key)].slice(0, 5);
+    localStorage.setItem(RECENT_REGIONS_KEY, JSON.stringify(next));
+  } catch (_) { /* storage unavailable (private mode, quota): recents are a convenience only */ }
+}
+function regionPickerHtml(stateOf, query, withGroupBtns) {
   const q = (query || "").trim().toLowerCase();
   let html = "";
+  const recent = q ? [] : getRecentRegions();
+  if (recent.length) {
+    html += `<div class="rg-group-h"><span>Recently used</span></div><div class="rg-grid">${recent.map((k) => regionBtnHtml(k, stateOf(k))).join("")}</div>`;
+  }
   for (const g of REGION_GROUPS) {
     const groupHit = !!q && (g.label.toLowerCase().includes(q) || g.family.toLowerCase().includes(q));
     const rs = g.regions.filter((r) => !q || groupHit || r.label.toLowerCase().includes(q));
     if (!rs.length) continue;
-    html += `<div class="rg-group-h">${escapeHtml(g.label)}</div><div class="rg-grid">${rs.map((r) => regionBtnHtml(r.key, stateOf(r.key))).join("")}</div>`;
+    const gBtns = withGroupBtns
+      ? `<span class="rg-gset"><button type="button" data-gset="1" data-group="${g.key}">All full</button><button type="button" data-gset="0.5" data-group="${g.key}">All half</button><button type="button" data-gset="0.25" data-group="${g.key}">All ¼</button><button type="button" data-gset="0" data-group="${g.key}">Clear</button></span>`
+      : "";
+    html += `<div class="rg-group-h"><span>${escapeHtml(g.label)}</span>${gBtns}</div><div class="rg-grid">${rs.map((r) => regionBtnHtml(r.key, stateOf(r.key))).join("")}</div>`;
   }
   return html || `<p class="text-faint" style="margin:10px 0;">No regions match “${escapeHtml(query)}”.</p>`;
 }
-function mountRegionPicker(root, { getState, onCycle }) {
+function mountRegionPicker(root, { getState, onCycle, onSetGroup }) {
   root.innerHTML = `<input type="search" class="rg-search" placeholder="Search regions…" aria-label="Search regions" autocomplete="off"><div class="rg-scroll"></div><button type="button" class="link-btn" data-act="add-region" style="margin-top:8px;">+ Add custom region</button>`;
   const input = qs(".rg-search", root), list = qs(".rg-scroll", root);
-  const draw = () => { list.innerHTML = regionPickerHtml(getState, input.value); };
+  const draw = () => { list.innerHTML = regionPickerHtml(getState, input.value, !!onSetGroup); };
   input.addEventListener("input", draw);
   qs('[data-act="add-region"]', root).addEventListener("click", async () => {
     const label = (window.prompt("Region name", input.value.trim()) || "").trim();
@@ -2150,13 +2203,24 @@ function mountRegionPicker(root, { getState, onCycle }) {
     draw();
   });
   list.addEventListener("click", (ev) => {
+    const gb = ev.target.closest("[data-gset]");
+    if (gb && onSetGroup) {
+      onSetGroup(gb.dataset.group, Number(gb.dataset.gset));
+      draw();
+      return;
+    }
     const b = ev.target.closest("[data-region]");
     if (!b) return;
-    onCycle(b.dataset.region);
-    const st = getState(b.dataset.region);
-    b.dataset.state = st; // update in place so scroll position and focus survive
-    b.setAttribute("aria-pressed", st !== 0);
-    b.lastElementChild.textContent = regionTag(st);
+    const key = b.dataset.region;
+    onCycle(key);
+    const st = getState(key);
+    if (st) pushRecentRegion(key); // shown at the top next time the list is drawn, not mid-tap
+    // Update in place (every copy of this region, since it can also sit in "Recently used") so scroll position and focus survive.
+    qsa(`[data-region="${key}"]`, list).forEach((btn) => {
+      btn.dataset.state = st;
+      btn.setAttribute("aria-pressed", st !== 0);
+      btn.lastElementChild.textContent = regionTag(st);
+    });
   });
   draw();
   return { redraw: draw };
@@ -2189,7 +2253,7 @@ function openExerciseDetailsModal(def) {
   });
 }
 
-function openRegionEditorModal(initial) {
+function openRegionEditorModal(initial, exerciseName) {
   return new Promise((resolve) => {
     const working = { ...sanitizeRegions(initial) };
     const overlay = document.createElement("div");
@@ -2198,16 +2262,49 @@ function openRegionEditorModal(initial) {
     overlay.innerHTML = `
       <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="Tag regions">
         <h3>What does this exercise target?</h3>
-        <p style="margin:0 0 10px; font-size:13px;">Tap a region to cycle Full (1.0) → Half (0.5) → off.</p>
+        <p style="margin:0 0 10px; font-size:13px;">Tap a region to cycle Full (1.0) → Half (0.5) → Quarter (0.25) → off.</p>
+        <div class="rg-sum" id="rg-sum" aria-live="polite"></div>
+        <div class="rg-tools">
+          <button type="button" class="link-btn" data-act="suggest" hidden></button>
+          <button type="button" class="link-btn" data-act="clear-all">Clear all</button>
+        </div>
         <div id="rg-mount"></div>
         <div class="btn-row" style="margin-top:16px;">
           <button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button>
           <button class="btn btn-primary" data-act="save" type="button">Save</button>
         </div>
       </div>`;
-    mountRegionPicker(qs("#rg-mount", overlay), {
+    // Live summary of what this tagging will count toward: one line per group at its highest credit.
+    // Computed directly (not via creditTable, which caches by object identity).
+    const sumEl = qs("#rg-sum", overlay);
+    const updateSum = () => {
+      const best = {};
+      for (const k in working) { const r = REGION_BY_KEY.get(k); if (r && working[k] > (best[r.group] || 0)) best[r.group] = working[k]; }
+      const parts = REGION_GROUPS.filter((g) => best[g.key]).map((g) => `${g.label} ${best[g.key]}`);
+      sumEl.textContent = parts.length ? `Counts: ${parts.join(" · ")}` : "No regions tagged yet.";
+    };
+    const picker = mountRegionPicker(qs("#rg-mount", overlay), {
       getState: (k) => working[k] || 0,
-      onCycle: (k) => { const n = nextRegionState(working[k] || 0); if (n) working[k] = n; else delete working[k]; },
+      onCycle: (k) => { const n = nextRegionState(working[k] || 0); if (n) working[k] = n; else delete working[k]; updateSum(); },
+      onSetGroup: (gk, st) => {
+        const g = GROUP_BY_KEY.get(gk);
+        if (!g) return;
+        for (const r of g.regions) { if (st) working[r.key] = st; else delete working[r.key]; }
+        updateSum();
+      },
+    });
+    updateSum();
+    const sug = exerciseName ? suggestRegionsFromName(exerciseName) : null;
+    const sugBtn = qs('[data-act="suggest"]', overlay);
+    if (sug && Object.keys(sug).length) { sugBtn.hidden = false; sugBtn.textContent = "Use suggestion from name"; }
+    sugBtn.addEventListener("click", () => {
+      for (const k of Object.keys(working)) delete working[k];
+      Object.assign(working, sug);
+      updateSum(); picker.redraw();
+    });
+    qs('[data-act="clear-all"]', overlay).addEventListener("click", () => {
+      for (const k of Object.keys(working)) delete working[k];
+      updateSum(); picker.redraw();
     });
     const close = (r) => { overlay.remove(); resolve(r); };
     qs('[data-act="cancel"]', overlay).addEventListener("click", () => close(null));
@@ -2217,27 +2314,104 @@ function openRegionEditorModal(initial) {
 }
 
 // ---- Bulk editor -----------------------------------------------------------
+// Pick one tagged exercise to copy regions from. Resolves to its id, or null if cancelled.
+function pickExerciseModal(rows) {
+  return new Promise((resolve) => {
+    const list = rows.filter((r) => Object.keys(r.e.regions || {}).length);
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    modalRoot.appendChild(overlay);
+    overlay.innerHTML = `
+      <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="Copy tags from">
+        <h3>Copy tags from…</h3>
+        <p style="margin:0 0 10px; font-size:13px;">Its regions replace the tags of the selected exercises. You can still tweak them before applying.</p>
+        <input type="search" class="rg-search" id="cp-filter" placeholder="Filter exercises…" aria-label="Filter exercises" autocomplete="off">
+        <div class="rg-scroll" id="cp-list"></div>
+        <div class="btn-row" style="margin-top:14px;"><button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button></div>
+      </div>`;
+    const draw = () => {
+      const q = qs("#cp-filter", overlay).value.trim().toLowerCase();
+      const hits = list.filter((r) => !q || (r.e.name + " " + r.label).toLowerCase().includes(q));
+      qs("#cp-list", overlay).innerHTML = hits.length
+        ? hits.map(({ e, label }) => `<button type="button" class="bt-row" data-id="${escapeHtml(e.id)}" style="width:100%; text-align:left; background:none; border-left:0; border-right:0; border-bottom:0; color:inherit; font:inherit;"><span class="bt-main"><span class="bt-name">${escapeHtml(e.name)}</span><span class="bt-sub">${escapeHtml(label)} · ${escapeHtml(muscleSummaryText(e))}</span></span></button>`).join("")
+        : `<p class="text-faint" style="margin:10px 0;">${list.length ? "No exercises match." : "No exercise has region tags yet."}</p>`;
+    };
+    draw();
+    const close = (r) => { overlay.remove(); resolve(r); };
+    qs("#cp-filter", overlay).addEventListener("input", draw);
+    qs("#cp-list", overlay).addEventListener("click", (ev) => {
+      const b = ev.target.closest("[data-id]");
+      if (b) close(b.dataset.id);
+    });
+    qs('[data-act="cancel"]', overlay).addEventListener("click", () => close(null));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
+  });
+}
+
+// Before/after review for a bulk change. changes: [{ name, before, after }]. Resolves true to apply.
+function bulkPreviewModal(changes, unchangedCount) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    modalRoot.appendChild(overlay);
+    overlay.innerHTML = `
+      <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="Review changes">
+        <h3>Review ${changes.length} change${changes.length === 1 ? "" : "s"}</h3>
+        <p style="margin:0 0 10px; font-size:13px;">${unchangedCount ? `${unchangedCount} selected exercise${unchangedCount === 1 ? " is" : "s are"} already identical and ${unchangedCount === 1 ? "is" : "are"} left alone. ` : ""}You can undo right after applying.</p>
+        <div class="rg-scroll">
+          ${changes.map((c) => `
+            <div style="padding:10px 0; border-top:1px solid var(--c-hairline);">
+              <div style="font-weight:600; font-size:14px; overflow-wrap:anywhere;">${escapeHtml(c.name)}</div>
+              <div class="text-faint" style="font-size:12.5px; margin-top:4px; overflow-wrap:anywhere;"><strong>Before:</strong> ${escapeHtml(c.before)}</div>
+              <div style="font-size:12.5px; margin-top:2px; overflow-wrap:anywhere;"><strong>After:</strong> ${escapeHtml(c.after)}</div>
+            </div>`).join("")}
+        </div>
+        <div class="btn-row" style="margin-top:14px;">
+          <button class="btn btn-ghost" data-act="cancel" type="button">Back</button>
+          <button class="btn btn-primary" data-act="ok" type="button">Apply</button>
+        </div>
+      </div>`;
+    const close = (r) => { overlay.remove(); resolve(r); };
+    qs('[data-act="cancel"]', overlay).addEventListener("click", () => close(false));
+    qs('[data-act="ok"]', overlay).addEventListener("click", () => close(true));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(false); });
+  });
+}
+
 async function renderBulkTags(container, navigate, keepSelected) {
   const rows = PROGRAM_DAY_TYPES.flatMap((dt) => (PROGRAM[dt.key] ? PROGRAM[dt.key].exercises : []).map((e) => ({ e, label: dt.label })));
   const selected = new Set([...(keepSelected || [])].filter((id) => rows.some((r) => r.e.id === id)));
-  const pending = {}; // regionKey -> 1 | 0.5 | 0, only for regions the user touched
+  const pending = {}; // regionKey -> 1 | 0.5 | 0.25 | 0, only for regions the user touched
+  let copied = null; // { regions, name } when "Copy tags from…" was used: replaces each selected exercise's tags, then pending is applied on top
   const picked = () => rows.filter((r) => selected.has(r.e.id)).map((r) => r.e);
   const common = (k) => {
+    if (copied) return copied.regions[k] || 0;
     const list = picked();
     if (!list.length) return 0;
     const v = list[0].regions[k] || 0;
     return list.every((e) => (e.regions[k] || 0) === v) ? v : "mixed";
   };
   const stateOf = (k) => (k in pending ? pending[k] : common(k));
+  // What one exercise's tags will be after Apply.
+  const finalFor = (e) => {
+    const r = copied ? { ...copied.regions } : { ...e.regions };
+    for (const k of Object.keys(pending)) { if (pending[k]) r[k] = pending[k]; else delete r[k]; }
+    return r;
+  };
+  const sameRegions = (a, b) => {
+    const ka = Object.keys(a), kb = Object.keys(b);
+    return ka.length === kb.length && ka.every((k) => a[k] === b[k]);
+  };
 
   container.innerHTML = `
     <button class="link-btn" data-act="back">‹ Program Overview</button>
     <h1 style="font-size:22px; margin:10px 0 6px;">Bulk Tag Regions</h1>
-    <p class="text-faint" style="margin:0 0 14px; font-size:13px;">Select exercises, then tap regions: Full counts 1.0 set, Half counts 0.5. An exercise counts once per group, at its highest credit. “~” means the selected exercises differ.</p>
+    <p class="text-faint" style="margin:0 0 14px; font-size:13px;">Select exercises, then tap regions: Full counts 1.0 set, Half 0.5, Quarter 0.25. An exercise counts once per group, at its highest credit. “~” means the selected exercises differ.</p>
     <div class="bt-bar">
       <button class="link-btn" data-act="all">Select all</button>
       <button class="link-btn" data-act="none">Clear</button>
       <button class="link-btn" data-act="autotag" hidden>Auto-tag untagged</button>
+      <label class="text-faint" style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="bt-untagged-only"> Untagged only</label>
       <span class="text-faint" id="bt-untagged"></span>
     </div>
     <div class="bt-panel" id="bt-panel" hidden>
@@ -2248,11 +2422,14 @@ async function renderBulkTags(container, navigate, keepSelected) {
           <button class="btn btn-primary btn-sm" data-act="apply" type="button">Apply</button>
         </span>
       </div>
+      <div class="rg-tools"><button type="button" class="link-btn" data-act="copy-from">Copy tags from…</button></div>
+      <div class="rg-sum" id="bt-copied" hidden></div>
       <div id="bt-picker"></div>
     </div>
+    <input type="search" class="rg-search" id="bt-filter" placeholder="Filter exercises…" aria-label="Filter exercises" autocomplete="off">
     <div class="card" id="bt-list">
       ${rows.length ? rows.map(({ e, label }) => `
-        <label class="bt-row">
+        <label class="bt-row" data-name="${escapeHtml((e.name + " " + label).toLowerCase())}" data-untagged="${Object.keys(e.regions).length ? "0" : "1"}">
           <input type="checkbox" data-id="${escapeHtml(e.id)}" ${selected.has(e.id) ? "checked" : ""}>
           <span class="bt-main"><span class="bt-name">${escapeHtml(e.name)}</span>
           <span class="bt-sub">${escapeHtml(label)} · ${escapeHtml(muscleSummaryText(e))}</span></span>
@@ -2263,6 +2440,11 @@ async function renderBulkTags(container, navigate, keepSelected) {
   const picker = mountRegionPicker(qs("#bt-picker", container), {
     getState: stateOf,
     onCycle: (k) => { pending[k] = nextRegionState(stateOf(k)); sync(); },
+    onSetGroup: (gk, st) => {
+      const g = GROUP_BY_KEY.get(gk);
+      if (g) for (const r of g.regions) pending[r.key] = st;
+      sync();
+    },
   });
   const untagged = rows.filter((r) => !Object.keys(r.e.regions).length).length;
   qs("#bt-untagged", container).textContent = untagged ? `${untagged} untagged` : "All tagged";
@@ -2271,8 +2453,11 @@ async function renderBulkTags(container, navigate, keepSelected) {
     const n = selected.size, t = Object.keys(pending).length;
     panel.hidden = n === 0;
     qs("#bt-count", container).textContent = `${n} selected`;
-    applyBtn.disabled = !t;
-    applyBtn.textContent = t ? `Apply ${t} change${t > 1 ? "s" : ""}` : "Apply";
+    const copiedEl = qs("#bt-copied", container);
+    copiedEl.hidden = !copied;
+    if (copied) copiedEl.textContent = `Copying tags from ${copied.name}. The selected exercises' tags will be replaced.`;
+    applyBtn.disabled = !(t || copied);
+    applyBtn.textContent = copied ? "Review & apply" : t ? `Review ${t} change${t > 1 ? "s" : ""}` : "Apply";
   }
   sync();
 
@@ -2283,13 +2468,32 @@ async function renderBulkTags(container, navigate, keepSelected) {
     picker.redraw();
     sync();
   });
+  const applyFilter = () => {
+    const q = qs("#bt-filter", container).value.trim().toLowerCase();
+    const only = qs("#bt-untagged-only", container).checked;
+    qsa("#bt-list .bt-row", container).forEach((row) => {
+      row.hidden = (q && !row.dataset.name.includes(q)) || (only && row.dataset.untagged !== "1");
+    });
+  };
+  qs("#bt-filter", container).addEventListener("input", applyFilter);
+  qs("#bt-untagged-only", container).addEventListener("change", applyFilter);
   const setAll = (on) => {
-    qsa("#bt-list input[data-id]", container).forEach((cb) => { cb.checked = on; if (on) selected.add(cb.dataset.id); else selected.delete(cb.dataset.id); });
+    qsa("#bt-list .bt-row:not([hidden]) input[data-id]", container).forEach((cb) => { cb.checked = on; if (on) selected.add(cb.dataset.id); else selected.delete(cb.dataset.id); });
     picker.redraw(); sync();
   };
   qs('[data-act="all"]', container).addEventListener("click", () => setAll(true));
   qs('[data-act="none"]', container).addEventListener("click", () => setAll(false));
-  qs('[data-act="reset"]', container).addEventListener("click", () => { for (const k in pending) delete pending[k]; picker.redraw(); sync(); });
+  qs('[data-act="reset"]', container).addEventListener("click", () => { for (const k in pending) delete pending[k]; copied = null; picker.redraw(); sync(); });
+  qs('[data-act="copy-from"]', container).addEventListener("click", async () => {
+    const id = await pickExerciseModal(rows);
+    if (!id) return;
+    const src = rows.find((r) => r.e.id === id);
+    if (!src) return;
+    copied = { regions: { ...src.e.regions }, name: src.e.name };
+    for (const k in pending) delete pending[k]; // the copy defines the base; tweak on top of it
+    picker.redraw();
+    sync();
+  });
   qs('[data-act="back"]', container).addEventListener("click", () => navigate("program-overview"));
   // Fill in untagged exercises from their names (same rules as the new-exercise form). Exercises whose
   // names don't match any rule are left alone, and tagged exercises are never touched.
@@ -2303,24 +2507,44 @@ async function renderBulkTags(container, navigate, keepSelected) {
   const autoN = Object.keys(autoPatch).length;
   if (autoN) { autoBtn.hidden = false; autoBtn.textContent = `Auto-tag ${autoN} from names`; }
   autoBtn.addEventListener("click", async () => {
+    const prevAuto = {};
+    for (const { e } of rows) if (autoPatch[e.id]) prevAuto[e.id] = {};
     await storage.bulkUpdateCustomExercises(autoPatch);
     applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
-    toast(`Tagged ${autoN} exercise${autoN > 1 ? "s" : ""}. Check them below and adjust if needed.`);
     renderBulkTags(container, navigate, selected);
+    toast(`Tagged ${autoN} exercise${autoN > 1 ? "s" : ""}. Check them and adjust if needed.`, {
+      duration: 6000,
+      undo: async () => {
+        await storage.bulkUpdateCustomExercises(prevAuto);
+        applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
+        renderBulkTags(container, navigate, selected);
+      },
+    });
   });
   applyBtn.addEventListener("click", async () => {
-    const keys = Object.keys(pending);
-    if (!keys.length || !selected.size) return;
-    const patch = {};
+    if (!(Object.keys(pending).length || copied) || !selected.size) return;
+    const patch = {}, prev = {}, changes = [];
+    let unchanged = 0;
     for (const e of picked()) {
-      const r = { ...e.regions };
-      for (const k of keys) { if (pending[k]) r[k] = pending[k]; else delete r[k]; }
-      patch[e.id] = r;
+      const after = finalFor(e);
+      if (sameRegions(after, e.regions)) { unchanged++; continue; }
+      patch[e.id] = after;
+      prev[e.id] = { ...e.regions };
+      changes.push({ name: e.name, before: muscleSummaryText({ regions: e.regions }), after: muscleSummaryText({ regions: after }) });
     }
+    if (!changes.length) { toast("Nothing would change"); return; }
+    if (!(await bulkPreviewModal(changes, unchanged))) return;
     await storage.bulkUpdateCustomExercises(patch);
     applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
-    toast(`Updated ${Object.keys(patch).length} exercise${Object.keys(patch).length > 1 ? "s" : ""}`);
     renderBulkTags(container, navigate, selected);
+    toast(`Updated ${Object.keys(patch).length} exercise${Object.keys(patch).length > 1 ? "s" : ""}`, {
+      duration: 6000,
+      undo: async () => {
+        await storage.bulkUpdateCustomExercises(prev);
+        applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
+        renderBulkTags(container, navigate, selected);
+      },
+    });
   });
 }
 
@@ -3076,6 +3300,9 @@ const DEFAULT_SETTINGS = {
   stepGoal: 10000, // daily step goal used by the Steps card on the Dashboard
   weeklySetsMin: 10, // target range for sets per muscle per week (This week by muscle card)
   weeklySetsMax: 20,
+  hardSetMinRir: null, // null = off. Else RIR cutoff (1, 2, or 3 = "2+"): completed sets logged at/above it are discounted in volume
+  hardSetMode: "half", // "half" = discounted sets count 0.5, "none" = they don't count
+  weeklyWindow: "calendar", // "calendar" = Monday to Sunday, "rolling" = last 7 days (This week by muscle card)
 };
 
 const DEFAULT_PROGRAM_STATE = {
@@ -3204,6 +3431,7 @@ async function saveSettings(partial) {
     const current = await getSettings();
     const merged = { ...current, ...partial };
     await db.put(STORES.KV, { key: KV_SETTINGS, ...merged });
+    applyHardSetConfig(merged);
     return merged;
   });
 }
@@ -3736,6 +3964,7 @@ async function importAllData(raw) {
 
     const mergedSettings = { ...DEFAULT_SETTINGS, ...data.settings };
     await db.put(STORES.KV, { key: KV_SETTINGS, ...mergedSettings });
+    applyHardSetConfig(mergedSettings);
 
     const mergedProgram = { ...DEFAULT_PROGRAM_STATE, ...(data.program || {}) };
     await db.put(STORES.KV, { key: KV_PROGRAM_STATE, ...mergedProgram });
@@ -3767,6 +3996,7 @@ async function resetAllData() {
     await db.clear(STORES.WORKOUTS);
     await db.delete(STORES.ACTIVE, ACTIVE_ID);
     await db.put(STORES.KV, { key: KV_SETTINGS, ...DEFAULT_SETTINGS });
+    applyHardSetConfig(DEFAULT_SETTINGS);
     await db.put(STORES.KV, { key: KV_PROGRAM_STATE, ...DEFAULT_PROGRAM_STATE });
     await db.put(STORES.KV, { key: KV_CUSTOM_EXERCISES, list: [] });
     await db.put(STORES.KV, { key: KV_PROGRAM_OVERRIDES, data: {} });
@@ -4611,13 +4841,25 @@ function weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, setti
   const todayKey = dateKey(today);
   const monday = mondayOf(today);
   const mondayKey = dateKey(monday);
+  // Window: Monday to Sunday (default), or a rolling last 7 days ending today (Settings > Volume Counting).
+  const rolling = settingsData.weeklyWindow === "rolling";
+  const winStart = new Date(today);
+  if (rolling) winStart.setDate(winStart.getDate() - 6);
+  const shiftDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 
   const trainedKeys = new Set();
   for (const w of workouts) if (w.status !== "abandoned") trainedKeys.add(dateKey(new Date(w.startedAt)));
-  const done = volumeByBucket(workouts, "week", { from: mondayKey }).get(mondayKey) || createVolumeAcc();
-  // Previous 4 full weeks (oldest first) for the per-group trend shown when a group is expanded.
+  const done = rolling
+    ? (volumeByBucket(workouts, "all", { from: dateKey(winStart), to: todayKey }).get("all") || createVolumeAcc())
+    : (volumeByBucket(workouts, "week", { from: mondayKey }).get(mondayKey) || createVolumeAcc());
+  // Previous 4 windows of 7 days (oldest first) for the per-group trend shown when a group is expanded.
   const prevWeeks = [];
-  {
+  if (rolling) {
+    for (let i = 4; i >= 1; i--) {
+      const a = shiftDays(winStart, -7 * i);
+      prevWeeks.push(volumeByBucket(workouts, "all", { from: dateKey(a), to: dateKey(shiftDays(a, 6)) }).get("all") || null);
+    }
+  } else {
     const from = new Date(monday); from.setDate(from.getDate() - 28);
     const buckets = volumeByBucket(workouts, "week", { from: dateKey(from), to: dateKey(new Date(monday.getTime() - 86400000)) });
     for (let i = 4; i >= 1; i--) {
@@ -4628,7 +4870,8 @@ function weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, setti
 
   const skipped = new Set((skipLogs || []).map((e) => e.date));
   const planned = createVolumeAcc();
-  for (let i = 0; i < 7; i++) {
+  // A rolling last-7-days window looks back only, so nothing is "planned" in it.
+  for (let i = 0; i < (rolling ? 0 : 7); i++) {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
     const k = dateKey(d);
@@ -4639,13 +4882,14 @@ function weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, setti
     mergeVolume(planned, programVolume(t));
   }
 
-  const status = (v, a, b) => { const r = Math.round(v); return r < a ? "Low" : r > b ? "High" : "On target"; };
+  const f1 = (v) => { const r = Math.round(v * 10) / 10; return r % 1 ? r.toFixed(1) : String(r); };
+  const status = (v, a, b) => { const r = Math.round(v * 10) / 10; return r < a ? "Low" : r > b ? "High" : "On target"; };
   const bar = (d, p, a, b, label) => {
     const max = Math.max(b * 1.25, (d + p) * 1.05, 1);
     const pc = (v) => Math.min(100, (v / max) * 100);
     return `<div class="mw-bar" role="img" aria-label="${escapeHtml(label)}"><span class="mw-band" style="left:${pc(a)}%; width:${pc(b) - pc(a)}%"></span><span class="mw-plan" style="left:${pc(d)}%; width:${pc(d + p) - pc(d)}%"></span><span class="mw-fill" style="width:${pc(d)}%"></span></div>`;
   };
-  const num = (d, p, st) => `${Math.round(d)}${p ? `<span class="mw-sub">+ ${Math.round(p)} planned</span>` : ""}<span class="mw-flag">${st}</span>`;
+  const num = (d, p, st) => `${f1(d)}${p ? `<span class="mw-sub">+ ${f1(p)} planned</span>` : ""}<span class="mw-flag">${st}</span>`;
 
   const groups = REGION_GROUPS
     .map((g) => ({ g, d: done.groups[g.key] || 0, p: planned.groups[g.key] || 0 }))
@@ -4662,12 +4906,12 @@ function weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, setti
   for (const def of allExerciseDefs()) for (const [k] of creditTable(def.regions || {}).list) trainedGroups.add(REGION_BY_KEY.get(k).group);
   const missing = REGION_GROUPS.filter((g) => trainedGroups.has(g.key) && !(done.groups[g.key] || 0) && !(planned.groups[g.key] || 0));
   const notHit = missing.length
-    ? `<div class="sc-caption" style="margin-top:10px;"><strong>Nothing done or planned:</strong> ${missing.map((g) => escapeHtml(g.label)).join(", ")}</div>`
+    ? `<div class="sc-caption" style="margin-top:10px;"><strong>${rolling ? "Nothing done:" : "Nothing done or planned:"}</strong> ${missing.map((g) => escapeHtml(g.label)).join(", ")}</div>`
     : "";
 
   let body;
   if (!groups.length) {
-    body = `<div class="sc-caption" style="margin-top:0;">Train this week to see your sets by muscle.</div>${nudge}`;
+    body = `<div class="sc-caption" style="margin-top:0;">${rolling ? "No sets logged in the last 7 days." : "Train this week to see your sets by muscle."}</div>${nudge}`;
   } else {
     body = groups.map(({ g, d, p }) => {
       const open = expandedGroups.has(g.key);
@@ -4683,7 +4927,7 @@ function weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, setti
             ${bar(d, p, glo, ghi, `${g.label}: ${Math.round(d)} sets done, ${Math.round(p)} planned, target ${glo} to ${ghi}`)}
           </button>
           <div class="mw-collapse"><div><div class="mw-regions">
-            <div class="sc-caption" style="margin:0 0 8px;">Previous 4 weeks: ${prevWeeks.map((w) => Math.round(w ? w.groups[g.key] || 0 : 0)).join(" · ")}</div>
+            <div class="sc-caption" style="margin:0 0 8px;">Previous 4 weeks: ${prevWeeks.map((w) => f1(w ? w.groups[g.key] || 0 : 0)).join(" · ")}</div>
             ${regs.map(({ r, d: rd, p: rp }) => `
               <div class="mw-reg">
                 <div class="mw-head"><span>${escapeHtml(r.label)}</span><span class="mw-num">${num(rd, rp, status(rd + rp, rlo, rhi))}</span></div>
@@ -4691,12 +4935,12 @@ function weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, setti
               </div>`).join("")}
           </div></div></div>
         </div>`;
-    }).join("") + notHit + `<div class="sc-caption" style="margin-top:10px;">Targets are per group and per region, smaller stabiliser groups get a lighter band. Each exercise counts once per group. Tap a group to expand.</div>${nudge}`;
+    }).join("") + notHit + `<div class="sc-caption" style="margin-top:10px;">Targets are per group and per region, smaller stabiliser groups get a lighter band. Each exercise counts once per group. Tap a group to expand.${escapeHtml(rolling ? " Window: the last 7 days including today, with no planned sets." : " Window: Monday to Sunday.")}${escapeHtml(hardSetCaption())}</div>${nudge}`;
   }
 
   return `
     <div class="stat-card span-2">
-      <div class="sc-head"><span class="sc-icon">${ICONS.split}</span><span class="sc-title">This Week by Muscle</span></div>
+      <div class="sc-head"><span class="sc-icon">${ICONS.split}</span><span class="sc-title">${rolling ? "Last 7 Days by Muscle" : "This Week by Muscle"}</span></div>
       ${body}
     </div>`;
 }
@@ -4907,7 +5151,7 @@ function workoutSplitCardHtml(workouts) {
   return `
     <div class="stat-card">
       <div class="sc-head"><span class="sc-icon">${ICONS.split}</span><span class="sc-title">Workout Split</span></div>
-      <div class="sc-caption" style="margin-top:0;">${perWeek} workouts/week · ${setCount} sets in the last 30 days</div>
+      <div class="sc-caption" style="margin-top:0;">${perWeek} workouts/week · ${roundTo(setCount, 1)} ${hardSetCfg.cutoff != null ? "hard " : ""}sets in the last 30 days</div>
       ${rowsHtml}
     </div>`;
 }
@@ -8075,6 +8319,34 @@ async function settingsRender(container, navigate) {
       <button class="btn" id="step-goal-save" style="margin-top:14px;">Save goals</button>
     </div>
 
+    <div class="section-title"><h2>Volume Counting</h2></div>
+    <div class="card">
+      <div class="field">
+        <label>Hard sets only: discount sets logged at or above this RIR</label>
+        <div class="toggle-row" id="hardset-cutoff-toggle">
+          <button data-value="0" class="${!settings.hardSetMinRir ? "active" : ""}">Off</button>
+          <button data-value="1" class="${settings.hardSetMinRir === 1 ? "active" : ""}">1+</button>
+          <button data-value="2" class="${settings.hardSetMinRir === 2 ? "active" : ""}">2+</button>
+          <button data-value="3" class="${settings.hardSetMinRir === 3 ? "active" : ""}">3 (2+ chip)</button>
+        </div>
+        <p class="text-faint" style="margin:8px 0 0;">Off by default. The RIR chips map to: Failure 0, 0, 1, 2, and "2+" = 3. A set at or above the cutoff is an easy set. Sets with no RIR logged always count in full.</p>
+      </div>
+      <div class="field">
+        <label>Discounted sets count as</label>
+        <div class="toggle-row" id="hardset-mode-toggle">
+          <button data-value="half" class="${settings.hardSetMode !== "none" ? "active" : ""}">Half a set</button>
+          <button data-value="none" class="${settings.hardSetMode === "none" ? "active" : ""}">Not counted</button>
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label>This week by muscle covers</label>
+        <div class="toggle-row" id="weekly-window-toggle">
+          <button data-value="calendar" class="${settings.weeklyWindow !== "rolling" ? "active" : ""}">Mon to Sun</button>
+          <button data-value="rolling" class="${settings.weeklyWindow === "rolling" ? "active" : ""}">Last 7 days</button>
+        </div>
+      </div>
+    </div>
+
     <div class="section-title"><h2>Rest Timer</h2></div>
     <div class="card">
       <div class="field">
@@ -8140,6 +8412,19 @@ async function settingsRender(container, navigate) {
     applyTheme(value);
   });
 
+  wireToggle(qs("#hardset-cutoff-toggle", container), async (value) => {
+    const n = Number(value);
+    await storage.saveSettings({ hardSetMinRir: n > 0 ? n : null });
+    if (cachedSettings) cachedSettings.hardSetMinRir = n > 0 ? n : null;
+  });
+  wireToggle(qs("#hardset-mode-toggle", container), async (value) => {
+    await storage.saveSettings({ hardSetMode: value === "none" ? "none" : "half" });
+    if (cachedSettings) cachedSettings.hardSetMode = value === "none" ? "none" : "half";
+  });
+  wireToggle(qs("#weekly-window-toggle", container), async (value) => {
+    await storage.saveSettings({ weeklyWindow: value === "rolling" ? "rolling" : "calendar" });
+    if (cachedSettings) cachedSettings.weeklyWindow = value === "rolling" ? "rolling" : "calendar";
+  });
   wireToggle(qs("#rest-duration-toggle", container), async (value) => {
     await storage.saveSettings({ restTimerSeconds: Number(value) });
     if (cachedSettings) cachedSettings.restTimerSeconds = Number(value);
@@ -8642,7 +8927,7 @@ async function renderProgramOverview(container, navigate) {
           ${muscleVolumeBreakdownHtml(programMuscleVolume(dt.key))}
         </div>`;
     }).join("")}
-    <p class="text-faint" style="margin-bottom:22px;">Use −/+ to change sets, kg/lb for the weight unit, ⏱ to cycle rest time, Bi/Uni to switch between bilateral and unilateral, the region button to tag what an exercise trains (or Bulk Tag Regions for many at once), or Remove to drop an exercise from future workouts. Unilateral exercises count their programmed sets the same as bilateral ones. A region tagged Half counts 0.5 of a set, and an exercise counts once per muscle group, at its highest credit. Historical workouts always keep what was actually performed, whatever you change here.</p>
+    <p class="text-faint" style="margin-bottom:22px;">Use −/+ to change sets, kg/lb for the weight unit, ⏱ to cycle rest time, Bi/Uni to switch between bilateral and unilateral, the region button to tag what an exercise trains (or Bulk Tag Regions for many at once), or Remove to drop an exercise from future workouts. Unilateral exercises count their programmed sets the same as bilateral ones. A region tagged Half counts 0.5 of a set and Quarter 0.25, and an exercise counts once per muscle group, at its highest credit. Historical workouts always keep what was actually performed, whatever you change here.</p>
 
     <div class="section-title"><h2>${weekly.perWeek ? "Weekly Volume by Muscle Group" : "Volume by Muscle Group"}</h2></div>
     <div class="card">
@@ -8841,7 +9126,7 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
       const id = btn.dataset.id;
       const def = findExerciseDef(id);
       if (!def) return;
-      const result = await openRegionEditorModal(def.regions || {});
+      const result = await openRegionEditorModal(def.regions || {}, def.name);
       if (!result) return;
       await storage.updateCustomExercise(id, { regions: result });
       applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
@@ -8893,7 +9178,7 @@ Bulgarian Split Squat 3x10 unilateral"></textarea>
   updateMusclePreview();
   let regionsTouched = false; // once you edit tags yourself, name-based suggestions stop overwriting them
   muscleBtn.addEventListener("click", async () => {
-    const result = await openRegionEditorModal(newExerciseRegions);
+    const result = await openRegionEditorModal(newExerciseRegions, qs("#custom-ex-name", container).value);
     if (result) {
       newExerciseRegions = result;
       regionsTouched = true;
@@ -9339,6 +9624,7 @@ async function bootApp() {
   }
 
   const settingsData = await storage.getSettings();
+  applyHardSetConfig(settingsData);
   applyTheme(settingsData.theme);
   applyBackground(settingsData.backgroundImage);
   applyAccentColor(settingsData.accentColor);

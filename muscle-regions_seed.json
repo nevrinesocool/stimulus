@@ -2,7 +2,8 @@
   "version": 2,
   "credits": {
     "full": 1.0,
-    "half": 0.5
+    "half": 0.5,
+    "quarter": 0.25
   },
   "groups": [
     {
