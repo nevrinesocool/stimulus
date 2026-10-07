@@ -2,7 +2,7 @@
 // Workout data lives in Supabase and still needs the network.
 // Bump CACHE_VERSION on every deploy; old caches are deleted on activate.
 
-const CACHE_VERSION = "v44";
+const CACHE_VERSION = "v45";
 const CACHE_NAME = `stimulus-shell-${CACHE_VERSION}`;
 
 // The app can't start without this library, so it is cached too (the page

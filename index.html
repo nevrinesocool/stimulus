@@ -1135,6 +1135,17 @@ input, select, textarea{ font-size:16px; }
 .bt-row{ display:flex; gap:12px; align-items:center; padding:12px 0; min-height:48px; border-top:1px solid var(--c-hairline); cursor:pointer; }
 .bt-row:first-child{ border-top:0; }
 .bt-row input{ width:22px; height:22px; flex:none; accent-color:var(--c-off); }
+.rg-brush{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:0 0 8px; font-size:var(--fs-xs); color:var(--c-off-faint); }
+.rg-brush button, .bt-chip{ border:1px solid var(--c-hairline-strong); background:transparent; color:var(--c-off-dim); border-radius:999px; padding:5px 12px; font-size:var(--fs-sm); min-height:32px; text-align:left; }
+.rg-brush button.active, .bt-chip.active{ background:var(--c-off); color:var(--c-black); border-color:var(--c-off); font-weight:600; }
+.bt-chips{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:0 0 10px; }
+.bt-panel .rg-scroll{ max-height:26vh; }
+.bt-group[hidden]{ display:none !important; }
+.bt-group-h{ display:flex; align-items:center; gap:8px; width:100%; background:none; border:0; border-top:1px solid var(--c-hairline); color:var(--c-off); font:inherit; font-weight:600; padding:12px 0; min-height:44px; text-align:left; cursor:pointer; }
+.bt-group:first-child .bt-group-h{ border-top:0; }
+.bt-group-h .bt-count{ margin-left:auto; font-weight:400; font-size:var(--fs-sm); color:var(--c-off-faint); }
+.bt-group.collapsed .bt-rows{ display:none; }
+.bt-warn{ font-size:12px; color:var(--c-off-dim); }
 .bt-main{ display:flex; flex-direction:column; min-width:0; }
 .bt-name{ font-size:var(--fs-xl); overflow-wrap:anywhere; }
 .bt-sub{ font-size:var(--fs-sm); color:var(--c-off-faint); overflow-wrap:anywhere; }
@@ -2153,6 +2164,11 @@ function suggestRegionsFromName(name) {
 // ---- Shared region picker (single-exercise modal + bulk editor panel) -------
 const regionTag = (s) => (s === "mixed" ? "~" : s === 1 ? "Full" : s === 0.5 ? "½" : s === 0.25 ? "¼" : "");
 const nextRegionState = (s) => (s === 1 ? 0.5 : s === 0.5 ? 0.25 : s === 0.25 ? 0 : 1); // 0 -> 1 -> 0.5 -> 0.25 -> 0 (mixed -> 1)
+// "Brush": what a tap does in the region picker. "cycle" steps Full -> Half -> Quarter -> off; otherwise a tap sets
+// that exact credit (and tapping a region already at it turns it off).
+let regionBrush = "cycle";
+const regionBrushValue = () => (regionBrush === "cycle" ? null : Number(regionBrush));
+const applyBrush = (cur, brush) => (brush == null ? nextRegionState(cur) : (cur === brush ? 0 : brush));
 function regionBtnHtml(key, state) {
   return `<button type="button" class="rg-btn" data-region="${key}" data-state="${state}" aria-pressed="${state !== 0}"><span>${escapeHtml(REGION_BY_KEY.get(key).label)}</span><span class="rg-tag">${regionTag(state)}</span></button>`;
 }
@@ -2189,10 +2205,17 @@ function regionPickerHtml(stateOf, query, withGroupBtns) {
   return html || `<p class="text-faint" style="margin:10px 0;">No regions match “${escapeHtml(query)}”.</p>`;
 }
 function mountRegionPicker(root, { getState, onCycle, onSetGroup }) {
-  root.innerHTML = `<input type="search" class="rg-search" placeholder="Search regions…" aria-label="Search regions" autocomplete="off"><div class="rg-scroll"></div><button type="button" class="link-btn" data-act="add-region" style="margin-top:8px;">+ Add custom region</button>`;
+  const brushBtns = [["cycle", "Cycle"], ["1", "Full"], ["0.5", "½"], ["0.25", "¼"], ["0", "Off"]];
+  root.innerHTML = `<div class="rg-brush" role="group" aria-label="What a tap does"><span>Tap sets:</span>${brushBtns.map(([v, l]) => `<button type="button" data-brush="${v}" class="${v === regionBrush ? "active" : ""}">${l}</button>`).join("")}</div><input type="search" class="rg-search" placeholder="Search regions…" aria-label="Search regions" autocomplete="off"><div class="rg-scroll"></div><button type="button" class="link-btn" data-act="add-region" style="margin-top:8px;">+ Add custom region</button>`;
   const input = qs(".rg-search", root), list = qs(".rg-scroll", root);
   const draw = () => { list.innerHTML = regionPickerHtml(getState, input.value, !!onSetGroup); };
   input.addEventListener("input", draw);
+  qs(".rg-brush", root).addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-brush]");
+    if (!b) return;
+    regionBrush = b.dataset.brush;
+    qsa(".rg-brush button", root).forEach((x) => x.classList.toggle("active", x === b));
+  });
   qs('[data-act="add-region"]', root).addEventListener("click", async () => {
     const label = (window.prompt("Region name", input.value.trim()) || "").trim();
     if (!label) return;
@@ -2212,7 +2235,7 @@ function mountRegionPicker(root, { getState, onCycle, onSetGroup }) {
     const b = ev.target.closest("[data-region]");
     if (!b) return;
     const key = b.dataset.region;
-    onCycle(key);
+    onCycle(key, regionBrushValue());
     const st = getState(key);
     if (st) pushRecentRegion(key); // shown at the top next time the list is drawn, not mid-tap
     // Update in place (every copy of this region, since it can also sit in "Recently used") so scroll position and focus survive.
@@ -2285,7 +2308,7 @@ function openRegionEditorModal(initial, exerciseName) {
     };
     const picker = mountRegionPicker(qs("#rg-mount", overlay), {
       getState: (k) => working[k] || 0,
-      onCycle: (k) => { const n = nextRegionState(working[k] || 0); if (n) working[k] = n; else delete working[k]; updateSum(); },
+      onCycle: (k, brush) => { const n = applyBrush(working[k] || 0, brush); if (n) working[k] = n; else delete working[k]; updateSum(); },
       onSetGroup: (gk, st) => {
         const g = GROUP_BY_KEY.get(gk);
         if (!g) return;
@@ -2314,6 +2337,127 @@ function openRegionEditorModal(initial, exerciseName) {
 }
 
 // ---- Bulk editor -----------------------------------------------------------
+const FULL_STACK_WARN_AT = 3;   // this many full-credit regions in one group triggers a heads-up
+const btCollapsed = new Set();  // day-type keys collapsed in the bulk list (survives re-renders)
+const fmtSets = (v) => { const r = Math.round(v * 10) / 10; return Number.isInteger(r) ? String(r) : r.toFixed(1); };
+// Layer b on top of a: regions in both keep the higher credit.
+function mergeRegions(a, b) {
+  const out = { ...a };
+  for (const k of Object.keys(b)) out[k] = Math.max(out[k] || 0, b[k]);
+  return out;
+}
+// Soft warnings about one exercise's tags (never blocks anything).
+function regionWarnings(regions) {
+  const keys = Object.keys(regions || {});
+  if (!keys.length) return [];
+  const out = [];
+  if (!keys.some((k) => regions[k] === 1)) out.push("No full-credit region");
+  const full = {};
+  for (const k of keys) {
+    if (regions[k] !== 1) continue;
+    const r = REGION_BY_KEY.get(k);
+    if (r) full[r.group] = (full[r.group] || 0) + 1;
+  }
+  for (const g of REGION_GROUPS) {
+    if (full[g.key] >= FULL_STACK_WARN_AT) out.push(`${g.label}: ${full[g.key]} full-credit regions (counts once per group)`);
+  }
+  return out;
+}
+// Planned sets per muscle group, per week when a training sequence exists (same maths as the Program
+// Overview). overrideById swaps in proposed tags without touching the program.
+function plannedWeeklyGroupTotals(pattern, overrideById) {
+  const seq = Array.isArray(pattern) ? pattern : [];
+  const keys = seq.length ? seq.filter((k) => k !== "R" && PROGRAM[k]) : PROGRAM_DAY_TYPES.map((d) => d.key).filter((k) => PROGRAM[k]);
+  const factor = seq.length ? 7 / seq.length : 1;
+  const totals = {};
+  for (const key of keys) {
+    for (const e of PROGRAM[key].exercises) {
+      const n = exerciseVolumeSets(e);
+      if (!n) continue;
+      const regions = (overrideById && overrideById[e.id]) || e.regions || {};
+      const best = {};
+      for (const k in regions) {
+        const r = REGION_BY_KEY.get(k);
+        if (r && regions[k] > (best[r.group] || 0)) best[r.group] = regions[k];
+      }
+      for (const g in best) totals[g] = (totals[g] || 0) + n * best[g] * factor;
+    }
+  }
+  return { totals, perWeek: seq.length > 0 };
+}
+function volumeDiffRows(before, after) {
+  const rows = [];
+  for (const g of REGION_GROUPS) {
+    const b = before[g.key] || 0, a = after[g.key] || 0;
+    if (Math.abs(a - b) >= 0.05) rows.push({ label: g.label, before: b, after: a });
+  }
+  return rows;
+}
+
+// "Hits this group/region" filter. Credit modes: any / full only / half only / quarter only / half or more.
+const HIT_MODES = [["any", "Any"], ["full", "Full"], ["half", "½"], ["quarter", "¼"], ["halfup", "½+"]];
+const hitCreditOk = (c, mode) => (mode === "full" ? c === 1 : mode === "half" ? c === 0.5 : mode === "quarter" ? c === 0.25 : mode === "halfup" ? c >= 0.5 : c > 0);
+function hitMatches(e, hit) {
+  if (!hit) return true;
+  const regions = e.regions || {};
+  if (hit.type === "region") return hitCreditOk(regions[hit.key] || 0, hit.mode);
+  return hitCreditOk(creditTable(regions).groupMax[hit.key] || 0, hit.mode);
+}
+function hitLabel(hit) {
+  const name = hit.type === "region" ? REGION_BY_KEY.get(hit.key)?.label : GROUP_BY_KEY.get(hit.key)?.label;
+  const m = HIT_MODES.find((x) => x[0] === hit.mode);
+  return `${name || hit.key}${hit.mode === "any" ? "" : ` · ${m ? m[1] : hit.mode}`}`;
+}
+function hitFilterModal(current) {
+  return new Promise((resolve) => {
+    let mode = current ? current.mode : "any";
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    modalRoot.appendChild(overlay);
+    overlay.innerHTML = `
+      <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="Find exercises that hit">
+        <h3>Show exercises that hit…</h3>
+        <p style="margin:0 0 8px; font-size:13px;">Pick a credit level, then a muscle group (uses its highest credit) or one specific region.</p>
+        <div class="rg-brush" id="hf-modes">${HIT_MODES.map(([v, l]) => `<button type="button" data-mode="${v}" class="${v === mode ? "active" : ""}">${l}</button>`).join("")}</div>
+        <input type="search" class="rg-search" id="hf-q" placeholder="Search groups or regions…" autocomplete="off">
+        <div class="rg-scroll" id="hf-list"></div>
+        <div class="btn-row" style="margin-top:14px;">
+          ${current ? `<button class="btn btn-ghost" data-act="clear" type="button">Clear filter</button>` : ""}
+          <button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button>
+        </div>
+      </div>`;
+    const draw = () => {
+      const q = qs("#hf-q", overlay).value.trim().toLowerCase();
+      let html = "";
+      for (const g of REGION_GROUPS) {
+        const groupHit = !q || g.label.toLowerCase().includes(q) || g.family.toLowerCase().includes(q);
+        const rs = g.regions.filter((r) => groupHit || r.label.toLowerCase().includes(q));
+        if (!rs.length) continue;
+        html += `<div class="rg-group-h"><span>${escapeHtml(g.label)}</span><span class="rg-gset"><button type="button" data-hit-group="${g.key}">Whole group</button></span></div><div class="rg-grid">${rs.map((r) => `<button type="button" class="rg-btn" data-state="0" data-hit-region="${r.key}"><span>${escapeHtml(r.label)}</span></button>`).join("")}</div>`;
+      }
+      qs("#hf-list", overlay).innerHTML = html || `<p class="text-faint" style="margin:10px 0;">Nothing matches “${escapeHtml(q)}”.</p>`;
+    };
+    draw();
+    const close = (r) => { overlay.remove(); resolve(r); };
+    qs("#hf-q", overlay).addEventListener("input", draw);
+    qs("#hf-modes", overlay).addEventListener("click", (ev) => {
+      const b = ev.target.closest("[data-mode]");
+      if (!b) return;
+      mode = b.dataset.mode;
+      qsa("#hf-modes button", overlay).forEach((x) => x.classList.toggle("active", x === b));
+    });
+    qs("#hf-list", overlay).addEventListener("click", (ev) => {
+      const g = ev.target.closest("[data-hit-group]");
+      if (g) return close({ type: "group", key: g.dataset.hitGroup, mode });
+      const r = ev.target.closest("[data-hit-region]");
+      if (r) close({ type: "region", key: r.dataset.hitRegion, mode });
+    });
+    qs('[data-act="clear"]', overlay)?.addEventListener("click", () => close("clear"));
+    qs('[data-act="cancel"]', overlay).addEventListener("click", () => close(null));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
+  });
+}
+
 // Pick one tagged exercise to copy regions from. Resolves to its id, or null if cancelled.
 function pickExerciseModal(rows) {
   return new Promise((resolve) => {
@@ -2324,7 +2468,7 @@ function pickExerciseModal(rows) {
     overlay.innerHTML = `
       <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="Copy tags from">
         <h3>Copy tags from…</h3>
-        <p style="margin:0 0 10px; font-size:13px;">Its regions replace the tags of the selected exercises. You can still tweak them before applying.</p>
+        <p style="margin:0 0 10px; font-size:13px;">Pick an exercise. Next you choose which muscle groups to copy and whether to replace or add to the selected exercises' tags.</p>
         <input type="search" class="rg-search" id="cp-filter" placeholder="Filter exercises…" aria-label="Filter exercises" autocomplete="off">
         <div class="rg-scroll" id="cp-list"></div>
         <div class="btn-row" style="margin-top:14px;"><button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button></div>
@@ -2348,22 +2492,123 @@ function pickExerciseModal(rows) {
   });
 }
 
-// Before/after review for a bulk change. changes: [{ name, before, after }]. Resolves true to apply.
-function bulkPreviewModal(changes, unchangedCount) {
+// Which groups of a tag set to take, and replace vs add. Resolves { groups:Set, mode } or null.
+function copyOptionsModal(title, regions) {
+  return new Promise((resolve) => {
+    const groups = REGION_GROUPS.filter((g) => g.regions.some((r) => regions[r.key]));
+    const on = new Set(groups.map((g) => g.key));
+    let mode = "merge";
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    modalRoot.appendChild(overlay);
+    const modeText = () => (mode === "merge"
+      ? "Add to existing: keeps each exercise's current tags and layers these on top. Where both have a region, the higher credit wins."
+      : "Replace: each exercise's tags become exactly these.");
+    overlay.innerHTML = `
+      <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="Copy options">
+        <h3>${escapeHtml(title)}</h3>
+        <p style="margin:0 0 6px; font-size:13px;">What to take:</p>
+        <div class="bt-chips" id="co-groups">${groups.map((g) => {
+          const parts = g.regions.filter((r) => regions[r.key]).map((r) => r.label.replace(/ \(.*\)$/, "") + (regions[r.key] === 0.25 ? " ¼" : regions[r.key] < 1 ? " ½" : ""));
+          return `<button type="button" class="bt-chip active" data-group="${g.key}"><strong>${escapeHtml(g.label)}</strong>&nbsp;<span style="opacity:.75">${escapeHtml(parts.join(", "))}</span></button>`;
+        }).join("")}</div>
+        <div class="rg-brush" id="co-mode"><button type="button" data-mode="merge" class="active">Add to existing</button><button type="button" data-mode="replace">Replace</button></div>
+        <p class="text-faint" id="co-mode-text" style="margin:0 0 4px; font-size:12.5px;">${modeText()}</p>
+        <div class="btn-row" style="margin-top:14px;">
+          <button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button>
+          <button class="btn btn-primary" data-act="ok" type="button">Continue</button>
+        </div>
+      </div>`;
+    const okBtn = qs('[data-act="ok"]', overlay);
+    const close = (r) => { overlay.remove(); resolve(r); };
+    qs("#co-groups", overlay).addEventListener("click", (ev) => {
+      const b = ev.target.closest("[data-group]");
+      if (!b) return;
+      const k = b.dataset.group;
+      if (on.has(k)) on.delete(k); else on.add(k);
+      b.classList.toggle("active", on.has(k));
+      okBtn.disabled = !on.size;
+    });
+    qs("#co-mode", overlay).addEventListener("click", (ev) => {
+      const b = ev.target.closest("[data-mode]");
+      if (!b) return;
+      mode = b.dataset.mode;
+      qsa("#co-mode button", overlay).forEach((x) => x.classList.toggle("active", x === b));
+      qs("#co-mode-text", overlay).textContent = modeText();
+    });
+    qs('[data-act="cancel"]', overlay).addEventListener("click", () => close(null));
+    okBtn.addEventListener("click", () => close({ groups: new Set(on), mode }));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
+  });
+}
+
+// Saved tag presets (stored in Settings, so they sync with the rest of the account).
+async function loadTagPresets() {
+  const s = await storage.getSettings();
+  return (Array.isArray(s.tagPresets) ? s.tagPresets : [])
+    .filter((p) => p && p.id && p.name)
+    .map((p) => ({ id: p.id, name: String(p.name), regions: sanitizeRegions(p.regions) }));
+}
+// Lists presets. Resolves { id } of the one chosen, or null. Deleting happens in place via onDelete.
+function presetsModal(presets, onDelete) {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "modal-overlay";
     modalRoot.appendChild(overlay);
     overlay.innerHTML = `
+      <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="Tag presets">
+        <h3>Tag presets</h3>
+        <p style="margin:0 0 10px; font-size:13px;">Tap a preset to choose which groups to apply and whether to replace or add. Save new ones with “Save as preset…”.</p>
+        <div class="rg-scroll" id="ps-list"></div>
+        <div class="btn-row" style="margin-top:14px;"><button class="btn btn-ghost" data-act="cancel" type="button">Close</button></div>
+      </div>`;
+    const draw = () => {
+      qs("#ps-list", overlay).innerHTML = presets.length
+        ? presets.map((p) => `<div class="bt-row" style="cursor:default;"><button type="button" data-use="${escapeHtml(p.id)}" class="bt-main" style="background:none; border:0; color:inherit; font:inherit; text-align:left; padding:0; flex:1;"><span class="bt-name">${escapeHtml(p.name)}</span><span class="bt-sub">${escapeHtml(muscleSummaryText({ regions: p.regions }))}</span></button><button type="button" class="link-btn" data-del="${escapeHtml(p.id)}">Delete</button></div>`).join("")
+        : `<p class="text-faint" style="margin:10px 0;">No presets yet. Set up tags in the picker, then use “Save as preset…”.</p>`;
+    };
+    draw();
+    const close = (r) => { overlay.remove(); resolve(r); };
+    qs("#ps-list", overlay).addEventListener("click", async (ev) => {
+      const d = ev.target.closest("[data-del]");
+      if (d) {
+        const i = presets.findIndex((p) => p.id === d.dataset.del);
+        if (i >= 0) { await onDelete(presets[i].id); presets.splice(i, 1); draw(); }
+        return;
+      }
+      const u = ev.target.closest("[data-use]");
+      if (u) close({ id: u.dataset.use });
+    });
+    qs('[data-act="cancel"]', overlay).addEventListener("click", () => close(null));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
+  });
+}
+
+// Before/after review for a bulk change. changes: [{ name, before, after, warnings }].
+// volume: { rows:[{label,before,after}], perWeek } shows each muscle group's planned sets before -> after.
+function bulkPreviewModal(changes, unchangedCount, volume) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    modalRoot.appendChild(overlay);
+    const warned = changes.filter((c) => c.warnings && c.warnings.length).length;
+    const volHtml = volume
+      ? `<div class="rg-sum" style="margin-bottom:10px;"><strong>${volume.perWeek ? "Planned sets per week" : "Planned sets per pass through your split"}</strong>${volume.rows.length
+          ? `<div style="margin-top:6px; display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:3px 14px;">${volume.rows.map((r) => `<div style="white-space:nowrap;">${escapeHtml(r.label)} <strong>${fmtSets(r.before)} → ${fmtSets(r.after)}</strong></div>`).join("")}</div>`
+          : `<div style="margin-top:4px;">No change to any muscle group's volume.</div>`}</div>`
+      : "";
+    overlay.innerHTML = `
       <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="Review changes">
         <h3>Review ${changes.length} change${changes.length === 1 ? "" : "s"}</h3>
-        <p style="margin:0 0 10px; font-size:13px;">${unchangedCount ? `${unchangedCount} selected exercise${unchangedCount === 1 ? " is" : "s are"} already identical and ${unchangedCount === 1 ? "is" : "are"} left alone. ` : ""}You can undo right after applying.</p>
+        <p style="margin:0 0 10px; font-size:13px;">${unchangedCount ? `${unchangedCount} selected exercise${unchangedCount === 1 ? " is" : "s are"} already identical and ${unchangedCount === 1 ? "is" : "are"} left alone. ` : ""}${warned ? `${warned} will have a heads-up (⚠), which doesn't block anything. ` : ""}You can undo right after applying.</p>
+        ${volHtml}
         <div class="rg-scroll">
           ${changes.map((c) => `
             <div style="padding:10px 0; border-top:1px solid var(--c-hairline);">
               <div style="font-weight:600; font-size:14px; overflow-wrap:anywhere;">${escapeHtml(c.name)}</div>
               <div class="text-faint" style="font-size:12.5px; margin-top:4px; overflow-wrap:anywhere;"><strong>Before:</strong> ${escapeHtml(c.before)}</div>
               <div style="font-size:12.5px; margin-top:2px; overflow-wrap:anywhere;"><strong>After:</strong> ${escapeHtml(c.after)}</div>
+              ${(c.warnings || []).map((w) => `<div class="bt-warn" style="margin-top:3px;">⚠ ${escapeHtml(w)}</div>`).join("")}
             </div>`).join("")}
         </div>
         <div class="btn-row" style="margin-top:14px;">
@@ -2379,28 +2624,40 @@ function bulkPreviewModal(changes, unchangedCount) {
 }
 
 async function renderBulkTags(container, navigate, keepSelected) {
-  const rows = PROGRAM_DAY_TYPES.flatMap((dt) => (PROGRAM[dt.key] ? PROGRAM[dt.key].exercises : []).map((e) => ({ e, label: dt.label })));
-  const selected = new Set([...(keepSelected || [])].filter((id) => rows.some((r) => r.e.id === id)));
+  const rows = PROGRAM_DAY_TYPES.flatMap((dt) => (PROGRAM[dt.key] ? PROGRAM[dt.key].exercises : []).map((e) => ({ e, label: dt.label, dt: dt.key })));
+  const rowById = new Map(rows.map((r) => [r.e.id, r]));
+  const selected = new Set([...(keepSelected || [])].filter((id) => rowById.has(id)));
   const pending = {}; // regionKey -> 1 | 0.5 | 0.25 | 0, only for regions the user touched
-  let copied = null; // { regions, name } when "Copy tags from…" was used: replaces each selected exercise's tags, then pending is applied on top
+  // A bulk "base" operation applied to every selected exercise before the tapped regions (pending) go on top.
+  // { desc, apply(e) -> regions }: copy (replace or add), preset, or re-suggest from name.
+  let source = null;
+  let hit = null;     // active "hits this group/region" filter
   const picked = () => rows.filter((r) => selected.has(r.e.id)).map((r) => r.e);
+  const baseFor = (e) => (source ? source.apply(e) : { ...e.regions });
   const common = (k) => {
-    if (copied) return copied.regions[k] || 0;
     const list = picked();
     if (!list.length) return 0;
-    const v = list[0].regions[k] || 0;
-    return list.every((e) => (e.regions[k] || 0) === v) ? v : "mixed";
+    const v = baseFor(list[0])[k] || 0;
+    return list.every((e) => (baseFor(e)[k] || 0) === v) ? v : "mixed";
   };
   const stateOf = (k) => (k in pending ? pending[k] : common(k));
   // What one exercise's tags will be after Apply.
   const finalFor = (e) => {
-    const r = copied ? { ...copied.regions } : { ...e.regions };
+    const r = baseFor(e);
     for (const k of Object.keys(pending)) { if (pending[k]) r[k] = pending[k]; else delete r[k]; }
     return r;
   };
   const sameRegions = (a, b) => {
     const ka = Object.keys(a), kb = Object.keys(b);
     return ka.length === kb.length && ka.every((k) => a[k] === b[k]);
+  };
+  const makeCopySource = (name, regions, groups, mode) => {
+    const taken = {};
+    for (const k of Object.keys(regions)) { const r = REGION_BY_KEY.get(k); if (r && groups.has(r.group)) taken[k] = regions[k]; }
+    const n = Object.keys(taken).length;
+    return mode === "merge"
+      ? { desc: `Adding ${n} region tag${n === 1 ? "" : "s"} from ${name}. Existing tags stay; where both have a region the higher credit wins.`, apply: (e) => mergeRegions(e.regions, taken) }
+      : { desc: `Replacing the selected exercises' tags with ${n} tag${n === 1 ? "" : "s"} from ${name}.`, apply: () => ({ ...taken }) };
   };
 
   container.innerHTML = `
@@ -2414,6 +2671,7 @@ async function renderBulkTags(container, navigate, keepSelected) {
       <label class="text-faint" style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="bt-untagged-only"> Untagged only</label>
       <span class="text-faint" id="bt-untagged"></span>
     </div>
+    <div class="bt-chips" id="bt-chips"></div>
     <div class="bt-panel" id="bt-panel" hidden>
       <div class="flex-between" style="gap:8px; margin-bottom:10px;">
         <strong id="bt-count"></strong>
@@ -2422,24 +2680,45 @@ async function renderBulkTags(container, navigate, keepSelected) {
           <button class="btn btn-primary btn-sm" data-act="apply" type="button">Apply</button>
         </span>
       </div>
-      <div class="rg-tools"><button type="button" class="link-btn" data-act="copy-from">Copy tags from…</button></div>
+      <div class="rg-tools">
+        <button type="button" class="link-btn" data-act="copy-from">Copy tags from…</button>
+        <button type="button" class="link-btn" data-act="presets">Presets…</button>
+        <button type="button" class="link-btn" data-act="save-preset">Save as preset…</button>
+        <button type="button" class="link-btn" data-act="resuggest" hidden>Re-suggest from name</button>
+      </div>
       <div class="rg-sum" id="bt-copied" hidden></div>
       <div id="bt-picker"></div>
     </div>
     <input type="search" class="rg-search" id="bt-filter" placeholder="Filter exercises…" aria-label="Filter exercises" autocomplete="off">
     <div class="card" id="bt-list">
-      ${rows.length ? rows.map(({ e, label }) => `
-        <label class="bt-row" data-name="${escapeHtml((e.name + " " + label).toLowerCase())}" data-untagged="${Object.keys(e.regions).length ? "0" : "1"}">
-          <input type="checkbox" data-id="${escapeHtml(e.id)}" ${selected.has(e.id) ? "checked" : ""}>
-          <span class="bt-main"><span class="bt-name">${escapeHtml(e.name)}</span>
-          <span class="bt-sub">${escapeHtml(label)} · ${escapeHtml(muscleSummaryText(e))}</span></span>
-        </label>`).join("") : `<p class="text-faint" style="margin:0;">No exercises in your program yet.</p>`}
+      ${rows.length ? PROGRAM_DAY_TYPES.filter((dt) => PROGRAM[dt.key] && PROGRAM[dt.key].exercises.length).map((dt) => {
+        const dRows = rows.filter((r) => r.dt === dt.key);
+        const tagged = dRows.filter((r) => Object.keys(r.e.regions).length).length;
+        const collapsed = btCollapsed.has(dt.key);
+        return `
+        <div class="bt-group${collapsed ? " collapsed" : ""}" data-dt="${escapeHtml(dt.key)}">
+          <button type="button" class="bt-group-h" data-act="toggle-day" data-dt="${escapeHtml(dt.key)}" aria-expanded="${!collapsed}">
+            <span aria-hidden="true" class="bt-caret">${collapsed ? "▸" : "▾"}</span><span>${escapeHtml(dt.label)}</span>
+            <span class="bt-count">${tagged}/${dRows.length} tagged${tagged < dRows.length ? ` · ${dRows.length - tagged} untagged` : ""}</span>
+          </button>
+          <div class="bt-rows">${dRows.map(({ e, label }) => {
+            const warn = regionWarnings(e.regions);
+            return `
+            <label class="bt-row" data-id="${escapeHtml(e.id)}" data-name="${escapeHtml((e.name + " " + label).toLowerCase())}" data-untagged="${Object.keys(e.regions).length ? "0" : "1"}">
+              <input type="checkbox" data-id="${escapeHtml(e.id)}" ${selected.has(e.id) ? "checked" : ""}>
+              <span class="bt-main"><span class="bt-name">${escapeHtml(e.name)}</span>
+              <span class="bt-sub">${escapeHtml(label)} · ${escapeHtml(muscleSummaryText(e))}</span>
+              ${warn.length ? `<span class="bt-warn" style="display:block;">⚠ ${escapeHtml(warn.join(" · "))}</span>` : ""}</span>
+            </label>`;
+          }).join("")}</div>
+        </div>`;
+      }).join("") : `<p class="text-faint" style="margin:0;">No exercises in your program yet.</p>`}
     </div>`;
 
   const panel = qs("#bt-panel", container), applyBtn = qs('[data-act="apply"]', container);
   const picker = mountRegionPicker(qs("#bt-picker", container), {
     getState: stateOf,
-    onCycle: (k) => { pending[k] = nextRegionState(stateOf(k)); sync(); },
+    onCycle: (k, brush) => { pending[k] = applyBrush(stateOf(k), brush); sync(); },
     onSetGroup: (gk, st) => {
       const g = GROUP_BY_KEY.get(gk);
       if (g) for (const r of g.regions) pending[r.key] = st;
@@ -2449,18 +2728,51 @@ async function renderBulkTags(container, navigate, keepSelected) {
   const untagged = rows.filter((r) => !Object.keys(r.e.regions).length).length;
   qs("#bt-untagged", container).textContent = untagged ? `${untagged} untagged` : "All tagged";
 
+  // Day-type chips (select a whole day type) and the "hits…" filter chip.
+  const chipsEl = qs("#bt-chips", container);
+  function drawChips() {
+    const dts = PROGRAM_DAY_TYPES.filter((dt) => rows.some((r) => r.dt === dt.key));
+    chipsEl.innerHTML = `${dts.map((dt) => {
+      const ids = rows.filter((r) => r.dt === dt.key).map((r) => r.e.id);
+      const all = ids.length && ids.every((id) => selected.has(id));
+      return `<button type="button" class="bt-chip${all ? " active" : ""}" data-dt-chip="${escapeHtml(dt.key)}" aria-pressed="${!!all}">${escapeHtml(dt.label)} <span style="opacity:.7">${ids.length}</span></button>`;
+    }).join("")}${hit
+      ? `<button type="button" class="bt-chip active" data-act="hit">Hits: ${escapeHtml(hitLabel(hit))}</button><button type="button" class="bt-chip" data-act="hit-clear" aria-label="Clear hits filter">✕</button>`
+      : `<button type="button" class="bt-chip" data-act="hit">Hits region/group…</button>`}`;
+  }
+
   function sync() {
     const n = selected.size, t = Object.keys(pending).length;
     panel.hidden = n === 0;
     qs("#bt-count", container).textContent = `${n} selected`;
     const copiedEl = qs("#bt-copied", container);
-    copiedEl.hidden = !copied;
-    if (copied) copiedEl.textContent = `Copying tags from ${copied.name}. The selected exercises' tags will be replaced.`;
-    applyBtn.disabled = !(t || copied);
-    applyBtn.textContent = copied ? "Review & apply" : t ? `Review ${t} change${t > 1 ? "s" : ""}` : "Apply";
+    copiedEl.hidden = !source;
+    if (source) copiedEl.textContent = source.desc;
+    applyBtn.disabled = !(t || source);
+    applyBtn.textContent = source ? "Review & apply" : t ? `Review ${t} change${t > 1 ? "s" : ""}` : "Apply";
+    const sugN = picked().filter((e) => suggestRegionsFromName(e.name)).length;
+    const rsBtn = qs('[data-act="resuggest"]', container);
+    rsBtn.hidden = !sugN;
+    rsBtn.textContent = `Re-suggest from name (${sugN})`;
+    drawChips();
   }
   sync();
 
+  const applyFilter = () => {
+    const q = qs("#bt-filter", container).value.trim().toLowerCase();
+    const only = qs("#bt-untagged-only", container).checked;
+    qsa("#bt-list .bt-row", container).forEach((row) => {
+      const r = rowById.get(row.dataset.id);
+      row.hidden = (q && !row.dataset.name.includes(q)) || (only && row.dataset.untagged !== "1") || !(r && hitMatches(r.e, hit));
+    });
+    qsa("#bt-list .bt-group", container).forEach((g) => { g.hidden = !qsa(".bt-row:not([hidden])", g).length; });
+    qs('[data-act="all"]', container).textContent = (q || only || hit) ? "Select shown" : "Select all";
+  };
+  const setIds = (ids, on) => {
+    for (const id of ids) { if (on) selected.add(id); else selected.delete(id); }
+    qsa("#bt-list input[data-id]", container).forEach((cb) => { cb.checked = selected.has(cb.dataset.id); });
+    picker.redraw(); sync();
+  };
   qs("#bt-list", container).addEventListener("change", (ev) => {
     const cb = ev.target.closest("input[data-id]");
     if (!cb) return;
@@ -2468,33 +2780,92 @@ async function renderBulkTags(container, navigate, keepSelected) {
     picker.redraw();
     sync();
   });
-  const applyFilter = () => {
-    const q = qs("#bt-filter", container).value.trim().toLowerCase();
-    const only = qs("#bt-untagged-only", container).checked;
-    qsa("#bt-list .bt-row", container).forEach((row) => {
-      row.hidden = (q && !row.dataset.name.includes(q)) || (only && row.dataset.untagged !== "1");
-    });
-  };
+  qs("#bt-list", container).addEventListener("click", (ev) => {
+    const h = ev.target.closest('[data-act="toggle-day"]');
+    if (!h) return;
+    const g = h.closest(".bt-group"), key = h.dataset.dt;
+    const nowCollapsed = !g.classList.contains("collapsed");
+    g.classList.toggle("collapsed", nowCollapsed);
+    if (nowCollapsed) btCollapsed.add(key); else btCollapsed.delete(key);
+    h.setAttribute("aria-expanded", String(!nowCollapsed));
+    qs(".bt-caret", h).textContent = nowCollapsed ? "▸" : "▾";
+  });
+  chipsEl.addEventListener("click", async (ev) => {
+    const c = ev.target.closest("[data-dt-chip]");
+    if (c) {
+      const ids = rows.filter((r) => r.dt === c.dataset.dtChip).map((r) => r.e.id);
+      setIds(ids, !ids.every((id) => selected.has(id)));
+      return;
+    }
+    if (ev.target.closest('[data-act="hit-clear"]')) { hit = null; drawChips(); applyFilter(); return; }
+    if (ev.target.closest('[data-act="hit"]')) {
+      const res = await hitFilterModal(hit);
+      if (res === null) return;
+      hit = res === "clear" ? null : res;
+      drawChips(); applyFilter();
+    }
+  });
   qs("#bt-filter", container).addEventListener("input", applyFilter);
   qs("#bt-untagged-only", container).addEventListener("change", applyFilter);
-  const setAll = (on) => {
-    qsa("#bt-list .bt-row:not([hidden]) input[data-id]", container).forEach((cb) => { cb.checked = on; if (on) selected.add(cb.dataset.id); else selected.delete(cb.dataset.id); });
-    picker.redraw(); sync();
-  };
-  qs('[data-act="all"]', container).addEventListener("click", () => setAll(true));
-  qs('[data-act="none"]', container).addEventListener("click", () => setAll(false));
-  qs('[data-act="reset"]', container).addEventListener("click", () => { for (const k in pending) delete pending[k]; copied = null; picker.redraw(); sync(); });
+  qs('[data-act="all"]', container).addEventListener("click", () => {
+    // Only what's on screen: visible rows in groups that aren't collapsed.
+    setIds(qsa("#bt-list .bt-group:not(.collapsed):not([hidden]) .bt-row:not([hidden]) input[data-id]", container).map((cb) => cb.dataset.id), true);
+  });
+  qs('[data-act="none"]', container).addEventListener("click", () => {
+    setIds(qsa("#bt-list .bt-row:not([hidden]) input[data-id]", container).map((cb) => cb.dataset.id), false);
+  });
+  qs('[data-act="reset"]', container).addEventListener("click", () => { for (const k in pending) delete pending[k]; source = null; picker.redraw(); sync(); });
+
   qs('[data-act="copy-from"]', container).addEventListener("click", async () => {
     const id = await pickExerciseModal(rows);
     if (!id) return;
-    const src = rows.find((r) => r.e.id === id);
+    const src = rowById.get(id);
     if (!src) return;
-    copied = { regions: { ...src.e.regions }, name: src.e.name };
+    const opts = await copyOptionsModal(`Copy from ${src.e.name}`, src.e.regions);
+    if (!opts) return;
+    source = makeCopySource(src.e.name, src.e.regions, opts.groups, opts.mode);
     for (const k in pending) delete pending[k]; // the copy defines the base; tweak on top of it
-    picker.redraw();
-    sync();
+    picker.redraw(); sync();
+  });
+  qs('[data-act="resuggest"]', container).addEventListener("click", () => {
+    let n = 0;
+    for (const e of picked()) if (suggestRegionsFromName(e.name)) n++;
+    source = {
+      desc: `Re-suggesting tags from the names of ${n} selected exercise${n === 1 ? "" : "s"}, replacing their current tags. Exercises whose names match no rule keep their tags.`,
+      apply: (e) => suggestRegionsFromName(e.name) || { ...e.regions },
+    };
+    for (const k in pending) delete pending[k];
+    picker.redraw(); sync();
+  });
+  qs('[data-act="save-preset"]', container).addEventListener("click", async () => {
+    const regions = {};
+    let mixed = 0;
+    for (const k of REGION_BY_KEY.keys()) {
+      const v = stateOf(k);
+      if (v === "mixed") mixed++; else if (v) regions[k] = v;
+    }
+    if (!Object.keys(regions).length) { toast(mixed ? "The selected exercises differ everywhere. Tap some regions first." : "Tag some regions first, then save them as a preset."); return; }
+    const name = (await textInputModal({ title: "Save tag preset", label: "Preset name", placeholder: "e.g. Row pattern", confirmLabel: "Save" }) || "").trim();
+    if (!name) return;
+    const cur = await loadTagPresets();
+    const next = [...cur.filter((p) => p.name.toLowerCase() !== name.toLowerCase()), { id: uid(), name, regions }];
+    await storage.saveSettings({ tagPresets: next });
+    toast(`Saved “${name}” (${Object.keys(regions).length} region${Object.keys(regions).length === 1 ? "" : "s"})${mixed ? `. ${mixed} region${mixed === 1 ? "" : "s"} where the selection differs were skipped.` : "."}`);
+  });
+  qs('[data-act="presets"]', container).addEventListener("click", async () => {
+    const list = await loadTagPresets();
+    const res = await presetsModal(list, async (pid) => { await storage.saveSettings({ tagPresets: (await loadTagPresets()).filter((p) => p.id !== pid) }); });
+    if (!res) return;
+    const p = list.find((x) => x.id === res.id);
+    if (!p) return;
+    const opts = await copyOptionsModal(`Apply “${p.name}”`, p.regions);
+    if (!opts) return;
+    source = makeCopySource(`preset “${p.name}”`, p.regions, opts.groups, opts.mode);
+    for (const k in pending) delete pending[k];
+    picker.redraw(); sync();
   });
   qs('[data-act="back"]', container).addEventListener("click", () => navigate("program-overview"));
+
   // Fill in untagged exercises from their names (same rules as the new-exercise form). Exercises whose
   // names don't match any rule are left alone, and tagged exercises are never touched.
   const autoBtn = qs('[data-act="autotag"]', container);
@@ -2522,7 +2893,7 @@ async function renderBulkTags(container, navigate, keepSelected) {
     });
   });
   applyBtn.addEventListener("click", async () => {
-    if (!(Object.keys(pending).length || copied) || !selected.size) return;
+    if (!(Object.keys(pending).length || source) || !selected.size) return;
     const patch = {}, prev = {}, changes = [];
     let unchanged = 0;
     for (const e of picked()) {
@@ -2530,10 +2901,13 @@ async function renderBulkTags(container, navigate, keepSelected) {
       if (sameRegions(after, e.regions)) { unchanged++; continue; }
       patch[e.id] = after;
       prev[e.id] = { ...e.regions };
-      changes.push({ name: e.name, before: muscleSummaryText({ regions: e.regions }), after: muscleSummaryText({ regions: after }) });
+      changes.push({ name: e.name, before: muscleSummaryText({ regions: e.regions }), after: muscleSummaryText({ regions: after }), warnings: regionWarnings(after) });
     }
     if (!changes.length) { toast("Nothing would change"); return; }
-    if (!(await bulkPreviewModal(changes, unchanged))) return;
+    const pattern = (await storage.getProgramState()).pattern;
+    const b = plannedWeeklyGroupTotals(pattern, null), a = plannedWeeklyGroupTotals(pattern, patch);
+    const volume = { rows: volumeDiffRows(b.totals, a.totals), perWeek: a.perWeek };
+    if (!(await bulkPreviewModal(changes, unchanged, volume))) return;
     await storage.bulkUpdateCustomExercises(patch);
     applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
     renderBulkTags(container, navigate, selected);
