@@ -2237,6 +2237,7 @@ async function renderBulkTags(container, navigate, keepSelected) {
     <div class="bt-bar">
       <button class="link-btn" data-act="all">Select all</button>
       <button class="link-btn" data-act="none">Clear</button>
+      <button class="link-btn" data-act="autotag" hidden>Auto-tag untagged</button>
       <span class="text-faint" id="bt-untagged"></span>
     </div>
     <div class="bt-panel" id="bt-panel" hidden>
@@ -2290,6 +2291,23 @@ async function renderBulkTags(container, navigate, keepSelected) {
   qs('[data-act="none"]', container).addEventListener("click", () => setAll(false));
   qs('[data-act="reset"]', container).addEventListener("click", () => { for (const k in pending) delete pending[k]; picker.redraw(); sync(); });
   qs('[data-act="back"]', container).addEventListener("click", () => navigate("program-overview"));
+  // Fill in untagged exercises from their names (same rules as the new-exercise form). Exercises whose
+  // names don't match any rule are left alone, and tagged exercises are never touched.
+  const autoBtn = qs('[data-act="autotag"]', container);
+  const autoPatch = {};
+  for (const { e } of rows) {
+    if (Object.keys(e.regions).length) continue;
+    const sug = suggestRegionsFromName(e.name);
+    if (sug && Object.keys(sug).length) autoPatch[e.id] = sug;
+  }
+  const autoN = Object.keys(autoPatch).length;
+  if (autoN) { autoBtn.hidden = false; autoBtn.textContent = `Auto-tag ${autoN} from names`; }
+  autoBtn.addEventListener("click", async () => {
+    await storage.bulkUpdateCustomExercises(autoPatch);
+    applyCustomExercises(await storage.getCustomExercises(), await storage.getProgramOverrides(), await storage.getExerciseOrder());
+    toast(`Tagged ${autoN} exercise${autoN > 1 ? "s" : ""}. Check them below and adjust if needed.`);
+    renderBulkTags(container, navigate, selected);
+  });
   applyBtn.addEventListener("click", async () => {
     const keys = Object.keys(pending);
     if (!keys.length || !selected.size) return;
@@ -4597,6 +4615,16 @@ function weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, setti
   const trainedKeys = new Set();
   for (const w of workouts) if (w.status !== "abandoned") trainedKeys.add(dateKey(new Date(w.startedAt)));
   const done = volumeByBucket(workouts, "week", { from: mondayKey }).get(mondayKey) || createVolumeAcc();
+  // Previous 4 full weeks (oldest first) for the per-group trend shown when a group is expanded.
+  const prevWeeks = [];
+  {
+    const from = new Date(monday); from.setDate(from.getDate() - 28);
+    const buckets = volumeByBucket(workouts, "week", { from: dateKey(from), to: dateKey(new Date(monday.getTime() - 86400000)) });
+    for (let i = 4; i >= 1; i--) {
+      const m = new Date(monday); m.setDate(m.getDate() - 7 * i);
+      prevWeeks.push(buckets.get(dateKey(m)) || null);
+    }
+  }
 
   const skipped = new Set((skipLogs || []).map((e) => e.date));
   const planned = createVolumeAcc();
@@ -4655,6 +4683,7 @@ function weeklyMuscleCardHtml(workouts, programHistory, scheduleOverrides, setti
             ${bar(d, p, glo, ghi, `${g.label}: ${Math.round(d)} sets done, ${Math.round(p)} planned, target ${glo} to ${ghi}`)}
           </button>
           <div class="mw-collapse"><div><div class="mw-regions">
+            <div class="sc-caption" style="margin:0 0 8px;">Previous 4 weeks: ${prevWeeks.map((w) => Math.round(w ? w.groups[g.key] || 0 : 0)).join(" · ")}</div>
             ${regs.map(({ r, d: rd, p: rp }) => `
               <div class="mw-reg">
                 <div class="mw-head"><span>${escapeHtml(r.label)}</span><span class="mw-num">${num(rd, rp, status(rd + rp, rlo, rhi))}</span></div>
