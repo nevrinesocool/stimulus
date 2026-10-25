@@ -1189,7 +1189,7 @@ input, select, textarea{ font-size:16px; }
   </button>
 </nav>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
 // ============================================================================
 // SUPABASE CONFIG — fill these in with your own project's values (Supabase
@@ -3988,7 +3988,10 @@ async function dashboardRender(container, navigate) {
     }).join("") + `</div>`;
   }
 
+  html += `<div class="btn-row" style="margin:16px 0"><button class="btn" id="dash-insights">Insights &amp; readiness</button><button class="btn" id="dash-tutorial">Tutorial</button></div>`;
   container.innerHTML = html;
+  qs("#dash-insights", container)?.addEventListener("click", () => navigate("insights"));
+  qs("#dash-tutorial", container)?.addEventListener("click", () => navigate("tutorial"));
 
   qs('[data-act="resume"]', container)?.addEventListener("click", () => navigate("workout-active"));
   qs('[data-act="start-suggested"]', container)?.addEventListener("click", async (e) => {
@@ -7498,6 +7501,8 @@ async function settingsRender(container, navigate) {
         <button class="btn" id="import-btn">Import Backup</button>
       </div>
       <button class="btn" id="export-csv-btn" style="margin-top:10px;">Export as CSV (spreadsheet)</button>
+      <button class="btn" id="diag-btn" style="margin-top:10px;">Copy diagnostics</button>
+      <button class="btn" id="tut-btn" style="margin-top:10px;">Tutorial</button>
       <input type="file" id="import-file" accept="application/json" style="display:none;">
       <button class="btn btn-danger" id="reset-btn" style="margin-top:10px;">Reset All Data</button>
     </div>
@@ -7577,6 +7582,12 @@ async function settingsRender(container, navigate) {
 
   qs("#export-btn", container).addEventListener("click", () => doExport());
   qs("#export-csv-btn", container).addEventListener("click", () => doExportCsv());
+  qs("#tut-btn", container)?.addEventListener("click", () => navigate("tutorial"));
+  qs("#diag-btn", container)?.addEventListener("click", async () => {
+    let log = "[]"; try { log = localStorage.getItem("stimulus-errlog") || "[]"; } catch (_) {}
+    const txt = `Stimulus diagnostics\n${navigator.userAgent}\nonline=${navigator.onLine}\n${log}`;
+    try { await navigator.clipboard.writeText(txt); toast("Diagnostics copied"); } catch (_) { toast("Could not copy"); }
+  });
   qs("#import-btn", container).addEventListener("click", () => qs("#import-file", container).click());
   qs("#import-file", container).addEventListener("change", (e) => doImport(e, container, navigate));
   qs("#reset-btn", container).addEventListener("click", () => doReset(container, navigate));
@@ -8349,6 +8360,7 @@ function navRootFor(route) {
   if (route.startsWith("history")) return "history";
   if (route.startsWith("exercise")) return "exercises";
   if (route === "schedule") return "schedule";
+  if (route === "tutorial") return "settings";
   if (route.startsWith("settings") || route === "program-overview" || route === "program-setup") return "settings";
   return "dashboard";
 }
@@ -8371,6 +8383,124 @@ function parseHash() {
 }
 
 let routeRenderToken = 0;
+// ============================================================================
+// INSIGHTS + TUTORIAL (added module): weekly review, readiness check-in,
+// PRs (estimated 1RM), weekly sets per muscle, plateau flags, next-time targets.
+// Read-only over existing data except the readiness log (stored in settings).
+// ============================================================================
+const insightsModule = (() => {
+  const e1rm = (kg, reps) => (kg > 0 && reps > 0 ? kg * (1 + Math.min(reps, 12) / 30) : 0); // Epley, capped at 12 reps
+  const topSet = (entry) => {
+    let best = null;
+    for (const s of entry.sets || []) {
+      if (!s.completed) continue;
+      const sides = s.unilateral ? [[s.leftWeightKg, s.leftReps, s.leftRir], [s.rightWeightKg, s.rightReps, s.rightRir]] : [[s.weightKg, s.reps, s.rir]];
+      for (const [w, r, rir] of sides) {
+        const v = e1rm(w || 0, r || 0);
+        if (v > 0 && (!best || v > best.e)) best = { e: v, w, r, rir };
+      }
+    }
+    return best;
+  };
+  const primaryMuscle = (id) => {
+    for (const dt of PROGRAM_DAY_TYPES || []) {
+      const ex = (PROGRAM[dt.key]?.exercises || []).find((x) => x.id === id);
+      if (ex) { const m = ex.muscles?.[0]; return (m && (m.muscle || m)) || "other"; }
+    }
+    return "other";
+  };
+  const monday = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
+  const fmt = (kg, unit) => `${roundTo(displayWeight(kg, unit), 1)} ${unit}`;
+
+  async function render(container, navigate) {
+    const [workoutsRaw, settingsData] = await Promise.all([storage.getWorkouts(), storage.getSettings()]);
+    const unit = settingsData.weightUnit || "kg";
+    const ws = workoutsRaw.filter((w) => w.status !== "abandoned").sort((a, b) => new Date(a.startedAt) - new Date(b.startedAt));
+    const thisMon = monday(new Date()), lastMon = new Date(thisMon); lastMon.setDate(lastMon.getDate() - 7);
+    const inRange = (w, a, b) => { const t = new Date(w.startedAt); return t >= a && (!b || t < b); };
+    const wkNow = ws.filter((w) => inRange(w, thisMon)), wkPrev = ws.filter((w) => inRange(w, lastMon, thisMon));
+    const setCount = (arr) => arr.reduce((n, w) => n + w.exercises.reduce((m, e) => m + e.sets.filter((s) => s.completed).length, 0), 0);
+
+    // per-exercise session history
+    const hist = {};
+    for (const w of ws) for (const e of w.exercises) {
+      const t = topSet(e); if (!t) continue;
+      (hist[e.exerciseId] ||= { name: e.name, rows: [] }).rows.push({ at: w.startedAt, ...t });
+    }
+    const prs = [], plateaus = [], next = [];
+    for (const [id, h] of Object.entries(hist)) {
+      const r = h.rows, last = r[r.length - 1], before = r.slice(0, -1);
+      if (before.length && last.e > Math.max(...before.map((x) => x.e)) + 0.01 && new Date(last.at) >= lastMon) prs.push({ name: h.name, last });
+      if (r.length >= 5) {
+        const prior = Math.max(...r.slice(0, -3).map((x) => x.e));
+        if (Math.max(...r.slice(-3).map((x) => x.e)) <= prior + 0.01) plateaus.push(h.name);
+      }
+      if (r.length) {
+        const bump = last.rir != null && last.rir !== "failure" && Number(last.rir) >= 2;
+        next.push({ name: h.name, text: bump ? `${fmt(last.w + (unit === "lb" ? 2.27 : 2.5), unit)} x ${last.r}` : `${fmt(last.w, unit)} x ${last.r + 1}`, why: bump ? "last top set had 2+ reps in reserve" : "repeat the weight, add a rep" });
+      }
+    }
+    // weekly sets per muscle (current week)
+    const mus = {};
+    for (const w of wkNow) for (const e of w.exercises) { const n = e.sets.filter((s) => s.completed).length; if (n) { const m = primaryMuscle(e.exerciseId); mus[m] = (mus[m] || 0) + n; } }
+    const muscleRows = Object.entries(mus).sort((a, b) => b[1] - a[1]).map(([m, n]) => {
+      const pct = Math.min(100, (n / 20) * 100), tone = n < 10 ? "below 10" : n <= 20 ? "in range" : "above 20";
+      return `<div style="margin:10px 0"><div style="display:flex;justify-content:space-between;font-size:var(--fs-md)"><span>${escapeHtml(typeof muscleLabel === "function" ? muscleLabel(m) : m)}</span><span class="text-faint">${n} sets - ${tone}</span></div><div style="height:6px;background:var(--c-hairline);border-radius:3px;margin-top:4px"><div style="height:6px;width:${pct}%;background:var(--c-off);border-radius:3px"></div></div></div>`;
+    }).join("");
+
+    // readiness
+    const log = settingsData.readinessLog || [];
+    const today = dateKey(new Date()), doneToday = log.find((x) => x.d === today);
+    const advice = (s) => (s >= 11 ? "Good to push. Chase progression today." : s >= 8 ? "Normal day. Keep 1-2 reps in reserve." : "Run it light: cut a set or two and stay 3+ RIR.");
+    const row = (k, label) => `<div style="margin:10px 0"><div class="text-faint" style="font-size:var(--fs-sm);margin-bottom:6px">${label}</div><div style="display:flex;gap:6px">${[1, 2, 3, 4, 5].map((n) => `<button class="btn rd-btn" data-k="${k}" data-v="${n}" style="flex:1;padding:10px 0">${n}</button>`).join("")}</div></div>`;
+    const readinessHtml = doneToday
+      ? `<p style="margin:8px 0 0">Score ${doneToday.s}/15. ${advice(doneToday.s)}</p>`
+      : `${row("sleep", "Sleep (1 poor - 5 great)")}${row("sore", "Freshness (1 very sore - 5 fresh)")}${row("stress", "Calm (1 stressed - 5 relaxed)")}<p class="text-faint" id="rd-out" style="margin:8px 0 0">Pick a number for each.</p>`;
+
+    const li = (arr, f, empty) => (arr.length ? arr.map(f).join("") : `<p class="text-faint" style="margin:6px 0">${empty}</p>`);
+    container.innerHTML = `
+      <div class="eyebrow">Insights</div><h2 style="margin:4px 0 14px">This week</h2>
+      <div class="card" style="padding:16px;margin-bottom:12px"><div class="eyebrow">Weekly review</div>
+        <p style="margin:8px 0 0">${wkNow.length} session${wkNow.length === 1 ? "" : "s"}, ${setCount(wkNow)} sets (last week: ${wkPrev.length}, ${setCount(wkPrev)}). ${prs.length} PR${prs.length === 1 ? "" : "s"} since last Monday.${plateaus.length ? ` Watch: ${escapeHtml(plateaus[0])} has stalled.` : ""}</p></div>
+      <div class="card" style="padding:16px;margin-bottom:12px"><div class="eyebrow">Readiness check-in</div>${readinessHtml}</div>
+      <div class="card" style="padding:16px;margin-bottom:12px"><div class="eyebrow">Sets per muscle this week</div>${muscleRows || '<p class="text-faint" style="margin:6px 0">Log a workout to see volume. Target is roughly 10-20 hard sets per muscle.</p>'}</div>
+      <div class="card" style="padding:16px;margin-bottom:12px"><div class="eyebrow">Recent PRs (estimated 1RM)</div>${li(prs, (p) => `<p style="margin:8px 0">${escapeHtml(p.name)}: ${fmt(p.last.w, unit)} x ${p.last.r} (est. 1RM ${fmt(p.last.e, unit)})</p>`, "No new PRs yet this week.")}</div>
+      <div class="card" style="padding:16px;margin-bottom:12px"><div class="eyebrow">Plateau watch</div>${li(plateaus, (n) => `<p style="margin:8px 0">${escapeHtml(n)}: no improvement in 3 sessions. Try a rep-range change, a small deload, or check sleep and food.</p>`, "Nothing stalled. Needs 5+ sessions per lift to judge.")}</div>
+      <div class="card" style="padding:16px;margin-bottom:12px"><div class="eyebrow">Next-time targets</div>${li(next.slice(0, 12), (n) => `<p style="margin:8px 0">${escapeHtml(n.name)}: <b>${n.text}</b> <span class="text-faint">(${n.why})</span></p>`, "Targets appear after your first logged session.")}</div>
+      <button class="btn" id="to-tut">How to use Stimulus</button>`;
+    qs("#to-tut", container).addEventListener("click", () => navigate("tutorial"));
+    const picks = {};
+    qsa(".rd-btn", container).forEach((b) => b.addEventListener("click", async () => {
+      picks[b.dataset.k] = Number(b.dataset.v);
+      qsa(`.rd-btn[data-k="${b.dataset.k}"]`, container).forEach((x) => (x.style.outline = x === b ? "2px solid var(--c-off)" : "none"));
+      if (picks.sleep && picks.sore && picks.stress) {
+        const s = picks.sleep + picks.sore + picks.stress;
+        try { await storage.saveSettings({ readinessLog: [...log.filter((x) => x.d !== today), { d: today, s }].slice(-60) }); } catch (_) {}
+        qs("#rd-out", container).textContent = `Score ${s}/15. ${advice(s)}`;
+      }
+    }));
+  }
+
+  const STEPS = [
+    ["1. Set up your program", "On first launch pick your program type, then add your own exercises. Nothing is pre-assigned. You can edit everything later in Settings > Program."],
+    ["2. Schedule", "The Schedule tab maps training days to workout types. Overrides let you move or skip a single day without breaking the pattern."],
+    ["3. Log a workout", "Open the Workout tab, start the day's session, enter weight and reps, and tap the check to complete a set. A rest timer starts automatically and survives a screen lock."],
+    ["4. RIR (reps in reserve)", "After each set record how many reps you could still have done. 0-1 is near failure, 2-3 is productive, 4+ was probably too easy. RIR drives the next-time targets."],
+    ["5. Insights", "Dashboard > Insights shows weekly sets per muscle (aim ~10-20), PRs from estimated 1RM, stalled lifts, and next-time targets."],
+    ["6. Readiness check-in", "Rate sleep, freshness and calm once a day. The 3-15 score suggests whether to push, hold, or go light. It is advice only; it never changes your program."],
+    ["7. Offline and sync", "The app opens offline. Sets you log are saved on the phone and sync when you reconnect. The status badge shows Saved, Pending or Offline."],
+    ["8. Backups", "Settings > Export Backup (JSON) restores everything; CSV is for spreadsheets. Export after big program changes."],
+    ["9. Troubleshooting", "If something looks wrong, open Settings > Copy diagnostics and send it to yourself or your developer. Your logged sets are never deleted by an error."],
+  ];
+  async function renderTutorial(container, navigate) {
+    container.innerHTML = `<div class="eyebrow">Guide</div><h2 style="margin:4px 0 14px">How to use Stimulus</h2>` +
+      STEPS.map(([t, b], i) => `<details class="card" style="padding:14px 16px;margin-bottom:10px"${i === 0 ? " open" : ""}><summary style="font-weight:600;cursor:pointer">${escapeHtml(t)}</summary><p class="text-faint" style="margin:10px 0 0">${escapeHtml(b)}</p></details>`).join("") +
+      `<button class="btn btn-primary" id="tut-go" style="margin-top:6px">Open Insights</button>`;
+    qs("#tut-go", container).addEventListener("click", () => navigate("insights"));
+  }
+  return { render, renderTutorial };
+})();
+
 async function renderRoute(route, params) {
   const myToken = ++routeRenderToken;
   currentRoute = route;
@@ -8414,6 +8544,12 @@ async function renderRoute(route, params) {
         break;
       case "schedule":
         await scheduleModule.render(appEl, navigate);
+        break;
+      case "insights":
+        await insightsModule.render(appEl, navigate);
+        break;
+      case "tutorial":
+        await insightsModule.renderTutorial(appEl, navigate);
         break;
       case "settings":
         await settings.render(appEl, navigate);
@@ -8504,6 +8640,7 @@ async function requestPersistentStorage() {
 let lastErrorToastAt = 0;
 function reportUnexpectedError(kind, err) {
   console.error(`[app] ${kind}`, err);
+  try { const l = JSON.parse(localStorage.getItem("stimulus-errlog") || "[]"); l.push({ t: new Date().toISOString(), kind, msg: String((err && err.message) || err).slice(0, 300) }); localStorage.setItem("stimulus-errlog", JSON.stringify(l.slice(-50))); } catch (_) {}
   const now = Date.now();
   if (now - lastErrorToastAt < 15000) return;
   lastErrorToastAt = now;
